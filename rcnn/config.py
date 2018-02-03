@@ -102,7 +102,7 @@ config.TEST.NMS = 0.3
 default = edict()
 
 # default network
-default.network = 'resnet_fpn'
+default.network = 'resnet_C4'
 default.pretrained = 'model/resnet-50'
 default.pretrained_epoch = 0
 default.base_lr = 0.004
@@ -144,6 +144,16 @@ network.resnet_fpn.FIXED_PARAMS = ['conv0', 'stage1', 'gamma', 'beta']
 network.resnet_fpn.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3', 'stage4',
                                           'P5', 'P4', 'P3', 'P2',
                                           'gamma', 'beta']
+network.resnet_C4 = edict()
+network.resnet_C4.pretrained = 'model/resnet-50'
+network.resnet_C4.pretrained_epoch = 0
+network.resnet_C4.PIXEL_MEANS = np.array([0, 0, 0])
+network.resnet_C4.RPN_FEAT_STRIDE = 16
+network.resnet_C4.RCNN_FEAT_STRIDE = 16
+network.resnet_C4.RPN_MIN_SIZE = network.resnet_C4.RPN_FEAT_STRIDE
+network.resnet_C4.FIXED_PARAMS = ['conv0', 'stage1', 'gamma', 'beta']
+network.resnet_C4.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3',
+                                          'gamma', 'beta']
 
 # dataset settings
 dataset = edict()
@@ -155,7 +165,7 @@ dataset.Cityscape.root_path = '/home/shared_disk1/lizhuDataset'
 dataset.Cityscape.dataset_path = '/home/shared_disk1/lizhuDataset/cityscape'
 dataset.Cityscape.NUM_CLASSES = 9
 dataset.Cityscape.SCALES = [(1024, 2048)]
-dataset.Cityscape.ANCHOR_SCALES = (8,)
+dataset.Cityscape.ANCHOR_SCALES = (8,16,32)
 dataset.Cityscape.ANCHOR_RATIOS = (0.5, 1, 2)
 dataset.Cityscape.NUM_ANCHORS = len(dataset.Cityscape.ANCHOR_SCALES) * len(dataset.Cityscape.ANCHOR_RATIOS)
 dataset.Cityscape.CLASS_ID = [0, 24, 25, 26, 27, 28, 31, 32, 33]

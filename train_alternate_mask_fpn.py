@@ -87,7 +87,7 @@ def parse_args():
     parser.add_argument('--no_shuffle', help='disable random shuffle', action='store_true')
     parser.add_argument('--resume', help='continue training', action='store_true')
     # alternate
-    parser.add_argument('--gpus', help='GPU device to train with', default='0', type=str)
+    parser.add_argument('--gpus', help='GPU device to train with', default='1', type=str)
     parser.add_argument('--pretrained', help='pretrained model prefix', default=default.pretrained, type=str)
     parser.add_argument('--pretrained_epoch', help='pretrained model epoch', default=default.pretrained_epoch, type=int)
     parser.add_argument('--rpn_epoch', help='end epoch of rpn training', default=default.rpn_epoch, type=int)

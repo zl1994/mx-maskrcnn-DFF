@@ -4,7 +4,7 @@ from mxnet.executor_manager import _split_input_slice
 
 from rcnn.config import config
 from rcnn.io.image import tensor_vstack
-from rcnn.io.rpn import get_rpn_testbatch, get_rpn_batch, assign_anchor_fpn
+from rcnn.io.rpn import get_rpn_testbatch, get_rpn_batch, assign_anchor
 from rcnn.io.rcnn import get_rcnn_testbatch, get_fpn_rcnn_testbatch, get_fpn_maskrcnn_batch
 
 
@@ -348,10 +348,9 @@ class MaskROIIter(mx.io.DataIter):
 
         return all_data, all_label
 
-
-class AnchorLoaderFPN(mx.io.DataIter):
+class AnchorLoader(mx.io.DataIter):
     def __init__(self, feat_sym, roidb, batch_size=1, shuffle=False, ctx=None, work_load_list=None,
-                 feat_stride=[32, 16, 8, 4], anchor_scales=(8, 16, 32), anchor_ratios=(0.5, 1, 2), allowed_border=0,
+                 feat_stride=16, anchor_scales=(8, 16, 32), anchor_ratios=(0.5, 1, 2), allowed_border=0,
                  aspect_grouping=False):
         """
         This Iter will provide roi data to Fast R-CNN network
@@ -364,7 +363,7 @@ class AnchorLoaderFPN(mx.io.DataIter):
         :param aspect_grouping: group images with similar aspects
         :return: AnchorLoader
         """
-        super(AnchorLoaderFPN, self).__init__()
+        super(AnchorLoader, self).__init__()
 
         # save parameters as properties
         self.feat_sym = feat_sym
@@ -470,13 +469,10 @@ class AnchorLoaderFPN(mx.io.DataIter):
         dummy_info = [max_shapes['data'][2], max_shapes['data'][3], 1.0]
 
         # infer shape
-        feat_shape_list = []
-        for i in range(len(self.feat_stride)):
-            _, feat_shape, _ = self.feat_sym[i].infer_shape(**max_shapes)
-            feat_shape = [int(i) for i in feat_shape[0]]
-            feat_shape_list.append(feat_shape)
+        _, feat_shape, _ = self.feat_sym.infer_shape(**max_shapes)
+        feat_shape = feat_shape[0]
 
-        label_dict = assign_anchor_fpn(feat_shape_list, dummy_boxes, dummy_info, self.feat_stride,
+        label_dict = assign_anchor(feat_shape, dummy_boxes, dummy_info, self.feat_stride,
                                                    self.anchor_scales, self.anchor_ratios, self.allowed_border)
         label_list = [label_dict['label'], label_dict['bbox_target'], label_dict['bbox_weight']]
         label_shape = [(k, tuple([input_batch_size] + list(v.shape[1:]))) for k, v in zip(self.label_name, label_list)]
@@ -515,11 +511,9 @@ class AnchorLoaderFPN(mx.io.DataIter):
         for data, label in zip(data_list, label_list):
             data_shape = {k: v.shape for k, v in data.items()}
             del data_shape['im_info']
-            feat_shape_list = []
-            for s in range(len(self.feat_stride)):
-                _, feat_shape, _ = self.feat_sym[s].infer_shape(**data_shape)
-                feat_shape = [int(i) for i in feat_shape[0]]
-                feat_shape_list.append(feat_shape)
+            _, feat_shape, _ = self.feat_sym.infer_shape(**data_shape)
+            feat_shape = feat_shape[0]
+
             label['label'] = [0 for i in range(config.TRAIN.BATCH_IMAGES)]
             label['bbox_target'] = [0 for i in range(config.TRAIN.BATCH_IMAGES)]
             label['bbox_weight'] = [0 for i in range(config.TRAIN.BATCH_IMAGES)]
@@ -528,7 +522,7 @@ class AnchorLoaderFPN(mx.io.DataIter):
                 im_info = data['im_info'][im_i]
                 gt_boxes = label['gt_boxes'][im_i][0]
                 label_dict = \
-                    assign_anchor_fpn(feat_shape_list, gt_boxes, im_info,
+                    assign_anchor(feat_shape, gt_boxes, im_info,
                                   self.feat_stride,
                                   self.anchor_scales,
                                   self.anchor_ratios,

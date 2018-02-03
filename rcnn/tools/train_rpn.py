@@ -6,7 +6,7 @@ import mxnet as mx
 from ..config import config, default, generate_config
 from ..symbol import *
 from ..core import callback, metric
-from ..core.loader import AnchorLoaderFPN
+from ..core.loader import AnchorLoader
 from ..core.module import MutableModule
 from ..utils.load_data import load_gt_roidb, merge_roidb, filter_roidb
 from ..utils.load_model import load_param
@@ -26,9 +26,7 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
 
     # load symbol
     sym = eval('get_' + network + '_rpn')(num_anchors=config.NUM_ANCHORS)
-    feat_sym = []
-    for stride in config.RPN_FEAT_STRIDE:
-        feat_sym.append(sym.get_internals()['rpn_cls_score_stride%s_output' % stride])
+    feat_sym = sym.get_internals()['rpn_cls_score_output']
 
 
     # setup multi-gpu
@@ -47,7 +45,7 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
     roidb = filter_roidb(roidb)
 
     # load training data
-    train_data = AnchorLoaderFPN(feat_sym, roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
+    train_data = AnchorLoader(feat_sym, roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
                                   ctx=ctx, work_load_list=work_load_list,
                                   feat_stride=config.RPN_FEAT_STRIDE, anchor_scales=config.ANCHOR_SCALES,
                                   anchor_ratios=config.ANCHOR_RATIOS, aspect_grouping=config.TRAIN.ASPECT_GROUPING,
