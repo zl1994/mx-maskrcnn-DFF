@@ -7,12 +7,11 @@ config = edict()
 config.PIXEL_MEANS = np.array([103.939, 116.779, 123.68])
 config.ROIALIGN = True
 
-config.RPN_FEAT_STRIDE = [64, 32, 16, 8, 4]
-config.RCNN_FEAT_STRIDE = [32, 16, 8, 4]
+config.RPN_FEAT_STRIDE = 16
+config.RCNN_FEAT_STRIDE = 16
 
 config.FIXED_PARAMS = ['conv0', 'stage1', 'gamma', 'beta']
-config.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3', 'stage4',
-                              'P5', 'P4', 'P3', 'P2',
+config.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3',
                               'gamma', 'beta']
 
 # dataset related params
@@ -126,7 +125,7 @@ default.rcnn_epoch = 24
 default.rcnn_lr = default.base_lr
 default.rcnn_lr_step = '20'
 # default alternate
-default.alternate_prefix = 'model/alternate'
+default.alternate_prefix = '/home/shared_disk1/lizhuDataset/cityscape/res50-C4/cityscape/alternate'
 
 # network settings
 network = edict()
