@@ -14,7 +14,7 @@ import numpy as np
 import numpy.random as npr
 
 from ..config import config
-from .image import get_image, tensor_vstack
+from .image import get_image, tensor_vstack, get_pair_image
 from ..processing.generate_anchor import generate_anchors, anchors_plane
 from ..processing.bbox_transform import bbox_overlaps, nonlinear_transform
 bbox_transform = nonlinear_transform
@@ -404,3 +404,33 @@ def assign_anchor(feat_shape, gt_boxes, im_info, feat_stride=16,
             'bbox_target': bbox_targets,
             'bbox_weight': bbox_weights}
     return label
+
+def get_rpn_pair_batch(roidb):
+    """
+    prototype for rpn batch: data, im_info, gt_boxes
+    :param roidb: ['image', 'flipped'] + ['gt_boxes', 'boxes', 'gt_classes']
+    :return: data, label
+    """
+    assert len(roidb) == 1, 'Single batch only'
+    imgs, ref_imgs, eq_flags, roidb = get_pair_image(roidb, scale=config.TRAIN.SCALE)
+    im_array = imgs[0]
+    ref_im_array = ref_imgs[0]
+    eq_flag_array = np.array([eq_flags[0],], dtype=np.float32)
+    im_info = np.array([roidb[0]['im_info']], dtype=np.float32)
+
+    # gt boxes: (x1, y1, x2, y2, cls)
+    if roidb[0]['gt_classes'].size > 0:
+        gt_inds = np.where(roidb[0]['gt_classes'] != 0)[0]
+        gt_boxes = np.empty((roidb[0]['boxes'].shape[0], 5), dtype=np.float32)
+        gt_boxes[:, 0:4] = roidb[0]['boxes'][gt_inds, :]
+        gt_boxes[:, 4] = roidb[0]['gt_classes'][gt_inds]
+    else:
+        gt_boxes = np.empty((0, 5), dtype=np.float32)
+
+    data = {'data': im_array,
+            'data_ref': ref_im_array,
+            'eq_flag': eq_flag_array,
+            'im_info': im_info}
+    label = {'gt_boxes': gt_boxes}
+
+    return data, label

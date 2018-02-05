@@ -129,6 +129,10 @@ class Cityscape(IMDB):
             print '===============================', im, '====================================='
             roi_rec = dict()
             roi_rec['image'] = os.path.join(self.data_path, imgfiles_list[im]['img_path'])
+            image_name = imgfiles_list[im]['img_path'].split('/')[-1]
+            roi_rec['city'] = image_name.split('_')[0]
+            roi_rec['seq'] = image_name.split('_')[1]
+            roi_rec['frame'] = image_name.split('_')[2]
             size = cv2.imread(roi_rec['image']).shape
             roi_rec['height'] = size[0]
             roi_rec['width'] = size[1]
@@ -146,7 +150,7 @@ class Cityscape(IMDB):
             roi_rec['max_classes'] = gt_overlaps.argmax(axis=1)
             roi_rec['max_overlaps'] = gt_overlaps.max(axis=1)
             roi_rec['flipped'] = False
-            assert len(roi_rec) == 11
+            assert len(roi_rec) == 14
             roidb.append(roi_rec)
         return roidb
 
@@ -171,6 +175,9 @@ class Cityscape(IMDB):
                     'img_name %s, width %d\n' % (roi_rec['image'], roi_rec['width']) + \
                     np.array_str(roi_rec['boxes'], precision=3, suppress_small=True)
             entry = {'image': roi_rec['image'],
+                     'city':roi_rec['city'],
+                     'seq': roi_rec['seq'],
+                     'frame': roi_rec['frame'],
                      'height': roi_rec['height'],
                      'width': roi_rec['width'],
                      'boxes': boxes,

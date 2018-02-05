@@ -46,6 +46,71 @@ def get_image(roidb, scale=False):
 
     return processed_ims, processed_roidb
 
+def get_pair_image(roidb, scale=False):
+    """
+    preprocess image and return processed roidb
+    :param roidb: a list of roidb
+    :return: list of img as in mxnet format
+    roidb add new item['im_info']
+    0 --- x (width, second dim of im)
+    |
+    y (height, first dim of im)
+    """
+    num_images = len(roidb)
+    processed_ims = []
+    processed_ref_ims = []
+    processed_eq_flags = []
+    processed_roidb = []
+    for i in range(num_images):
+        roi_rec = roidb[i]
+
+        eq_flag = 0 # 0 for unequal, 1 for equal
+        assert os.path.exists(roi_rec['image']), '%s does not exist'.format(roi_rec['image'])
+        im = cv2.imread(roi_rec['image'])
+
+        #offset = np.random.randint(-5, 1)
+        offset = 0
+        if offset == 0:
+            ref_im = im.copy()
+            eq_flag = 1
+        else:
+            ref_image_path = os.path.join('/mnt/D/cityscape/leftImg8bit_sequence/train', roi_rec['city'])
+            ref_image_frame = int(roi_rec['frame']) + offset
+            ref_image_frame = '%06d'%ref_image_frame
+            ref_image_name = roi_rec['city']+'_'+roi_rec['seq']+'_'+ref_image_frame+'_leftImg8bit.png'
+            ref_image = os.path.join(ref_image_path, ref_image_name)
+            assert os.path.exists(ref_image), '%s does not exist'.format(ref_image)
+            ref_im = cv2.imread(ref_image)
+
+
+        if roidb[i]['flipped']:
+            im = im[:, ::-1, :]
+            ref_im = ref_im[:, ::-1, :]
+
+        new_rec = roi_rec.copy()
+        if scale:
+            scale_range = config.TRAIN.SCALE_RANGE
+            im_scale = npr.uniform(scale_range[0], scale_range[1])
+            im = cv2.resize(im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR)
+            ref_im = cv2.resize(ref_im, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR)
+
+        else:
+            scale_ind = random.randrange(len(config.SCALES))
+            target_size = config.SCALES[scale_ind][0]
+            max_size = config.SCALES[scale_ind][1]
+            im, im_scale = resize(im, target_size, max_size)
+            ref_im, im_scale = resize(ref_im, target_size, max_size)
+
+        im_tensor = transform(im, config.PIXEL_MEANS)
+        ref_im_tensor = transform(ref_im, config.PIXEL_MEANS)
+        processed_ims.append(im_tensor)
+        processed_ref_ims.append(ref_im_tensor)
+        processed_eq_flags.append(eq_flag)
+        im_info = [im_tensor.shape[2], im_tensor.shape[3], im_scale]
+        new_rec['boxes'] = roi_rec['boxes'].copy() * im_scale
+        new_rec['im_info'] = im_info
+        processed_roidb.append(new_rec)
+    return processed_ims, processed_ref_ims, processed_eq_flags, processed_roidb
 
 def resize(im, target_size, max_size):
     """

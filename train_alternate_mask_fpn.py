@@ -10,7 +10,7 @@ from rcnn.tools.test_rpn import test_rpn
 from rcnn.utils.combine_model import combine_model
 
 
-def alternate_train(args, ctx, pretrained, epoch,
+def alternate_train(args, ctx, pretrained,pretrained_flow, epoch,
                     rpn_epoch, rpn_lr, rpn_lr_step,
                     rcnn_epoch, rcnn_lr, rcnn_lr_step):
     # set up logger
@@ -27,7 +27,7 @@ def alternate_train(args, ctx, pretrained, epoch,
     logging.info('########## TRAIN RPN WITH IMAGENET INIT')
     train_rpn(args.network, args.dataset, args.image_set, args.root_path, args.dataset_path,
               args.frequent, args.kvstore, args.work_load_list, args.no_flip, args.no_shuffle, args.resume,
-              ctx, pretrained, epoch, model_path+'/rpn1', begin_epoch, rpn_epoch,
+              ctx, pretrained, pretrained_flow, epoch, model_path + '/rpn1', begin_epoch, rpn_epoch,
               train_shared=False, lr=rpn_lr, lr_step=rpn_lr_step)
 
     logging.info('########## GENERATE RPN DETECTION')
@@ -89,6 +89,7 @@ def parse_args():
     # alternate
     parser.add_argument('--gpus', help='GPU device to train with', default='1', type=str)
     parser.add_argument('--pretrained', help='pretrained model prefix', default=default.pretrained, type=str)
+    parser.add_argument('--pretrained_flow', help='pretrained flownet model prefix', default=default.pretrained_flow, type=str)
     parser.add_argument('--pretrained_epoch', help='pretrained model epoch', default=default.pretrained_epoch, type=int)
     parser.add_argument('--rpn_epoch', help='end epoch of rpn training', default=default.rpn_epoch, type=int)
     parser.add_argument('--rpn_lr', help='base learning rate', default=default.rpn_lr, type=float)
@@ -106,7 +107,7 @@ def main():
     args = parse_args()
     print 'Called with argument:', args
     ctx = [mx.gpu(int(i)) for i in args.gpus.split(',')]
-    alternate_train(args, ctx, args.pretrained, args.pretrained_epoch,
+    alternate_train(args, ctx, args.pretrained, args.pretrained_flow, args.pretrained_epoch,
                     args.rpn_epoch, args.rpn_lr, args.rpn_lr_step,
                     args.rcnn_epoch, args.rcnn_lr, args.rcnn_lr_step)
 

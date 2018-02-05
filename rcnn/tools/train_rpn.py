@@ -6,7 +6,7 @@ import mxnet as mx
 from ..config import config, default, generate_config
 from ..symbol import *
 from ..core import callback, metric
-from ..core.loader import AnchorLoader
+from ..core.loader import AnchorLoader, AnchorLoader_dff
 from ..core.module import MutableModule
 from ..utils.load_data import load_gt_roidb, merge_roidb, filter_roidb
 from ..utils.load_model import load_param
@@ -14,7 +14,7 @@ from ..utils.load_model import load_param
 
 def train_rpn(network, dataset, image_set, root_path, dataset_path,
               frequent, kvstore, work_load_list, no_flip, no_shuffle, resume,
-              ctx, pretrained, epoch, prefix, begin_epoch, end_epoch,
+              ctx, pretrained, pretrained_flow, epoch, prefix, begin_epoch, end_epoch,
               train_shared, lr, lr_step):
     # set up logger
     logging.basicConfig()
@@ -22,8 +22,6 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
     logger.setLevel(logging.INFO)
 
     # setup config
-    config.TRAIN.BATCH_IMAGES = 1
-
     # load symbol
     sym = eval('get_' + network + '_rpn')(num_anchors=config.NUM_ANCHORS)
     feat_sym = sym.get_internals()['rpn_cls_score_output']
@@ -39,20 +37,22 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
     # load dataset and prepare imdb for training
     image_sets = [iset for iset in image_set.split('+')]
     roidbs = [load_gt_roidb(dataset, image_set, root_path, dataset_path,
-                            flip=not no_flip)
+                            flip= no_flip)
               for image_set in image_sets]
     roidb = merge_roidb(roidbs)
     roidb = filter_roidb(roidb)
 
     # load training data
-    train_data = AnchorLoader(feat_sym, roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
+    train_data = AnchorLoader_dff(feat_sym, roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
                                   ctx=ctx, work_load_list=work_load_list,
                                   feat_stride=config.RPN_FEAT_STRIDE, anchor_scales=config.ANCHOR_SCALES,
                                   anchor_ratios=config.ANCHOR_RATIOS, aspect_grouping=config.TRAIN.ASPECT_GROUPING,
                                   allowed_border=9999)
 
     # infer max shape
-    max_data_shape = [('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES])))]
+    max_data_shape = [('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+                      ('data_ref', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+                      ('eq_flag', (input_batch_size,))]
     max_data_shape, max_label_shape = train_data.infer_shape(max_data_shape)
     print 'providing maximum shape', max_data_shape, max_label_shape
 
@@ -70,6 +70,9 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
         arg_params, aux_params = load_param(prefix, begin_epoch, convert=True)
     else:
         arg_params, aux_params = load_param(pretrained, epoch, convert=True)
+        arg_params_flow, aux_params_flow = load_param(pretrained_flow, epoch, convert=True)
+        arg_params.update(arg_params_flow)
+        aux_params.update(aux_params_flow)
         init = mx.init.Xavier(factor_type="in", rnd_type='gaussian', magnitude=2)
         init_internal = mx.init.Normal(sigma=0.01)
         for k in sym.list_arguments():
@@ -79,7 +82,7 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
                 print 'init', k
                 arg_params[k] = mx.nd.zeros(shape=arg_shape_dict[k])
                 if not k.endswith('bias'):
-                    init_internal(k, arg_params[k])
+                    init(k, arg_params[k])
 
         for k in sym.list_auxiliary_states():
             if k not in aux_params:

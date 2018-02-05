@@ -101,8 +101,9 @@ config.TEST.NMS = 0.3
 default = edict()
 
 # default network
-default.network = 'resnet_C4'
+default.network = 'resnet_C4_DFF'
 default.pretrained = 'model/resnet-50'
+default.pretrained_flow = 'model/flownet'
 default.pretrained_epoch = 0
 default.base_lr = 0.004
 # default dataset
@@ -125,7 +126,7 @@ default.rcnn_epoch = 24
 default.rcnn_lr = default.base_lr
 default.rcnn_lr_step = '20'
 # default alternate
-default.alternate_prefix = '/home/shared_disk1/lizhuDataset/cityscape/res50-C4/cityscape/alternate'
+default.alternate_prefix = '/mnt/D/cityscape/model/res50-C4/cityscape/alternate'
 
 # network settings
 network = edict()
@@ -154,14 +155,27 @@ network.resnet_C4.FIXED_PARAMS = ['conv0', 'stage1', 'gamma', 'beta']
 network.resnet_C4.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3',
                                           'gamma', 'beta']
 
+network.resnet_C4_DFF = edict()
+network.resnet_C4_DFF.pretrained = 'model/resnet-50'
+network.resnet_C4_DFF.pretrained_epoch = 0
+network.resnet_C4_DFF.PIXEL_MEANS = np.array([0, 0, 0])
+network.resnet_C4_DFF.RPN_FEAT_STRIDE = 16
+network.resnet_C4_DFF.RCNN_FEAT_STRIDE = 16
+network.resnet_C4_DFF.RPN_MIN_SIZE = network.resnet_C4.RPN_FEAT_STRIDE
+network.resnet_C4_DFF.FIXED_PARAMS = ['conv0', 'stage1', 'gamma', 'beta']
+network.resnet_C4_DFF.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3',
+                                          'gamma', 'beta']
+
+
+
 # dataset settings
 dataset = edict()
 
 dataset.Cityscape = edict()
 dataset.Cityscape.image_set = 'train'
 dataset.Cityscape.test_image_set = 'val'
-dataset.Cityscape.root_path = '/home/shared_disk1/lizhuDataset'
-dataset.Cityscape.dataset_path = '/home/shared_disk1/lizhuDataset/cityscape'
+dataset.Cityscape.root_path = '/mnt/D/cityscape/model/res50-C4/cityscape/alternate'
+dataset.Cityscape.dataset_path = '/mnt/D/cityscape'
 dataset.Cityscape.NUM_CLASSES = 9
 dataset.Cityscape.SCALES = [(1024, 2048)]
 dataset.Cityscape.ANCHOR_SCALES = (8,16,32)
