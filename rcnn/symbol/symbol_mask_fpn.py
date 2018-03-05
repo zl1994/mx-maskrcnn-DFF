@@ -62,7 +62,7 @@ def get_resnet_conv(data):
                              name='stage3_unit%s' % i)
     conv_C4 = unit
 
-    return unit
+    return conv_C4
 
 def get_resnet_conv_down(conv_feat):
     # C5 to P5, 1x1 dimension reduction to 256
@@ -96,6 +96,95 @@ def get_resnet_conv_down(conv_feat):
     conv_fpn_feat.update({"stride64":P6, "stride32":P5, "stride16":P4, "stride8":P3, "stride4":P2})
 
     return conv_fpn_feat, [P6, P5, P4, P3, P2]
+
+def get_flownet(img_cur, img_ref):
+        data = mx.symbol.Concat(img_cur / 255.0, img_ref / 255.0, dim=1)
+        resize_data = mx.symbol.Pooling(name='resize_data', data=data, pooling_convention='full', pad=(0, 0),
+                                        kernel=(2, 2), stride=(2, 2), pool_type='avg')
+        flow_conv1 = mx.symbol.Convolution(name='flow_conv1', data=resize_data, num_filter=64, pad=(3, 3),
+                                           kernel=(7, 7), stride=(2, 2), no_bias=False)
+        ReLU1 = mx.symbol.LeakyReLU(name='ReLU1', data=flow_conv1, act_type='leaky', slope=0.1)
+        conv2 = mx.symbol.Convolution(name='conv2', data=ReLU1, num_filter=128, pad=(2, 2), kernel=(5, 5),
+                                      stride=(2, 2), no_bias=False)
+        ReLU2 = mx.symbol.LeakyReLU(name='ReLU2', data=conv2, act_type='leaky', slope=0.1)
+        conv3 = mx.symbol.Convolution(name='conv3', data=ReLU2, num_filter=256, pad=(2, 2), kernel=(5, 5),
+                                      stride=(2, 2), no_bias=False)
+        ReLU3 = mx.symbol.LeakyReLU(name='ReLU3', data=conv3, act_type='leaky', slope=0.1)
+        conv3_1 = mx.symbol.Convolution(name='conv3_1', data=ReLU3, num_filter=256, pad=(1, 1), kernel=(3, 3),
+                                        stride=(1, 1), no_bias=False)
+        ReLU4 = mx.symbol.LeakyReLU(name='ReLU4', data=conv3_1, act_type='leaky', slope=0.1)
+        conv4 = mx.symbol.Convolution(name='conv4', data=ReLU4, num_filter=512, pad=(1, 1), kernel=(3, 3),
+                                      stride=(2, 2), no_bias=False)
+        ReLU5 = mx.symbol.LeakyReLU(name='ReLU5', data=conv4, act_type='leaky', slope=0.1)
+        conv4_1 = mx.symbol.Convolution(name='conv4_1', data=ReLU5, num_filter=512, pad=(1, 1), kernel=(3, 3),
+                                        stride=(1, 1), no_bias=False)
+        ReLU6 = mx.symbol.LeakyReLU(name='ReLU6', data=conv4_1, act_type='leaky', slope=0.1)
+        conv5 = mx.symbol.Convolution(name='conv5', data=ReLU6, num_filter=512, pad=(1, 1), kernel=(3, 3),
+                                      stride=(2, 2), no_bias=False)
+        ReLU7 = mx.symbol.LeakyReLU(name='ReLU7', data=conv5, act_type='leaky', slope=0.1)
+        conv5_1 = mx.symbol.Convolution(name='conv5_1', data=ReLU7, num_filter=512, pad=(1, 1), kernel=(3, 3),
+                                        stride=(1, 1), no_bias=False)
+        ReLU8 = mx.symbol.LeakyReLU(name='ReLU8', data=conv5_1, act_type='leaky', slope=0.1)
+        conv6 = mx.symbol.Convolution(name='conv6', data=ReLU8, num_filter=1024, pad=(1, 1), kernel=(3, 3),
+                                      stride=(2, 2), no_bias=False)
+        ReLU9 = mx.symbol.LeakyReLU(name='ReLU9', data=conv6, act_type='leaky', slope=0.1)
+        conv6_1 = mx.symbol.Convolution(name='conv6_1', data=ReLU9, num_filter=1024, pad=(1, 1), kernel=(3, 3),
+                                        stride=(1, 1), no_bias=False)
+        ReLU10 = mx.symbol.LeakyReLU(name='ReLU10', data=conv6_1, act_type='leaky', slope=0.1)
+        Convolution1 = mx.symbol.Convolution(name='Convolution1', data=ReLU10, num_filter=2, pad=(1, 1), kernel=(3, 3),
+                                             stride=(1, 1), no_bias=False)
+        deconv5 = mx.symbol.Deconvolution(name='deconv5', data=ReLU10, num_filter=512, pad=(0, 0), kernel=(4, 4),
+                                          stride=(2, 2), no_bias=False)
+        crop_deconv5 = mx.symbol.Crop(name='crop_deconv5', *[deconv5, ReLU8], offset=(1, 1))
+        ReLU11 = mx.symbol.LeakyReLU(name='ReLU11', data=crop_deconv5, act_type='leaky', slope=0.1)
+        upsample_flow6to5 = mx.symbol.Deconvolution(name='upsample_flow6to5', data=Convolution1, num_filter=2,
+                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
+        crop_upsampled_flow6_to_5 = mx.symbol.Crop(name='crop_upsampled_flow6_to_5', *[upsample_flow6to5, ReLU8],
+                                                   offset=(1, 1))
+        Concat2 = mx.symbol.Concat(name='Concat2', *[ReLU8, ReLU11, crop_upsampled_flow6_to_5])
+        Convolution2 = mx.symbol.Convolution(name='Convolution2', data=Concat2, num_filter=2, pad=(1, 1), kernel=(3, 3),
+                                             stride=(1, 1), no_bias=False)
+        deconv4 = mx.symbol.Deconvolution(name='deconv4', data=Concat2, num_filter=256, pad=(0, 0), kernel=(4, 4),
+                                          stride=(2, 2), no_bias=False)
+        crop_deconv4 = mx.symbol.Crop(name='crop_deconv4', *[deconv4, ReLU6], offset=(1, 1))
+        ReLU12 = mx.symbol.LeakyReLU(name='ReLU12', data=crop_deconv4, act_type='leaky', slope=0.1)
+        upsample_flow5to4 = mx.symbol.Deconvolution(name='upsample_flow5to4', data=Convolution2, num_filter=2,
+                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
+        crop_upsampled_flow5_to_4 = mx.symbol.Crop(name='crop_upsampled_flow5_to_4', *[upsample_flow5to4, ReLU6],
+                                                   offset=(1, 1))
+        Concat3 = mx.symbol.Concat(name='Concat3', *[ReLU6, ReLU12, crop_upsampled_flow5_to_4])
+        Convolution3 = mx.symbol.Convolution(name='Convolution3', data=Concat3, num_filter=2, pad=(1, 1), kernel=(3, 3),
+                                             stride=(1, 1), no_bias=False)
+        deconv3 = mx.symbol.Deconvolution(name='deconv3', data=Concat3, num_filter=128, pad=(0, 0), kernel=(4, 4),
+                                          stride=(2, 2), no_bias=False)
+        crop_deconv3 = mx.symbol.Crop(name='crop_deconv3', *[deconv3, ReLU4], offset=(1, 1))
+        ReLU13 = mx.symbol.LeakyReLU(name='ReLU13', data=crop_deconv3, act_type='leaky', slope=0.1)
+        upsample_flow4to3 = mx.symbol.Deconvolution(name='upsample_flow4to3', data=Convolution3, num_filter=2,
+                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
+        crop_upsampled_flow4_to_3 = mx.symbol.Crop(name='crop_upsampled_flow4_to_3', *[upsample_flow4to3, ReLU4],
+                                                   offset=(1, 1))
+        Concat4 = mx.symbol.Concat(name='Concat4', *[ReLU4, ReLU13, crop_upsampled_flow4_to_3])
+        Convolution4 = mx.symbol.Convolution(name='Convolution4', data=Concat4, num_filter=2, pad=(1, 1), kernel=(3, 3),
+                                             stride=(1, 1), no_bias=False)
+        deconv2 = mx.symbol.Deconvolution(name='deconv2', data=Concat4, num_filter=64, pad=(0, 0), kernel=(4, 4),
+                                          stride=(2, 2), no_bias=False)
+        crop_deconv2 = mx.symbol.Crop(name='crop_deconv2', *[deconv2, ReLU2], offset=(1, 1))
+        ReLU14 = mx.symbol.LeakyReLU(name='ReLU14', data=crop_deconv2, act_type='leaky', slope=0.1)
+        upsample_flow3to2 = mx.symbol.Deconvolution(name='upsample_flow3to2', data=Convolution4, num_filter=2,
+                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
+        crop_upsampled_flow3_to_2 = mx.symbol.Crop(name='crop_upsampled_flow3_to_2', *[upsample_flow3to2, ReLU2],
+                                                   offset=(1, 1))
+        Concat5 = mx.symbol.Concat(name='Concat5', *[ReLU2, ReLU14, crop_upsampled_flow3_to_2])
+        Concat5 = mx.symbol.Pooling(name='resize_concat5', data=Concat5, pooling_convention='full', pad=(0, 0),
+                                    kernel=(2, 2), stride=(2, 2), pool_type='avg')
+        Convolution5 = mx.symbol.Convolution(name='Convolution5', data=Concat5, num_filter=2, pad=(1, 1), kernel=(3, 3),
+                                             stride=(1, 1), no_bias=False)
+
+        Convolution5_scale_bias = mx.sym.Variable(name='Convolution5_scale_bias', lr_mult=0.0)
+        Convolution5_scale = mx.symbol.Convolution(name='Convolution5_scale', data=Concat5, num_filter=1024, pad=(0, 0),
+                                                   kernel=(1, 1), stride=(1, 1),
+                                                   bias=Convolution5_scale_bias, no_bias=False)
+        return Convolution5 * 2.5, Convolution5_scale
 
 def get_resnet_fpn_mask_test(num_classes=config.NUM_CLASSES, num_anchors=config.NUM_ANCHORS):
     data = mx.symbol.Variable(name="data")
@@ -335,225 +424,6 @@ def get_resnet_fpn_rpn(num_anchors=config.NUM_ANCHORS):
     group = mx.symbol.Group(rpn_group)
     return group
 
-def get_resnet_C4_rpn(num_anchors=config.NUM_ANCHORS):
-    data = mx.symbol.Variable(name="data")
-    rpn_label = mx.symbol.Variable(name='label')
-    rpn_bbox_target = mx.symbol.Variable(name='bbox_target')
-    rpn_bbox_weight = mx.symbol.Variable(name='bbox_weight')
-
-    # shared convolutional layers, bottom up
-    conv_feat = get_resnet_conv(data)
-
-    # shared parameters for predictions
-    rpn_conv_weight      = mx.symbol.Variable('rpn_conv_weight')
-    rpn_conv_bias        = mx.symbol.Variable('rpn_conv_bias')
-    rpn_conv_cls_weight  = mx.symbol.Variable('rpn_conv_cls_weight')
-    rpn_conv_cls_bias    = mx.symbol.Variable('rpn_conv_cls_bias')
-    rpn_conv_bbox_weight = mx.symbol.Variable('rpn_conv_bbox_weight')
-    rpn_conv_bbox_bias   = mx.symbol.Variable('rpn_conv_bbox_bias')
-
-    rpn_conv = mx.symbol.Convolution(data=conv_feat,
-                                         kernel=(3, 3), pad=(1, 1),
-                                         num_filter=512,
-                                         weight=rpn_conv_weight,
-                                         bias=rpn_conv_bias)
-    rpn_relu = mx.symbol.Activation(data=rpn_conv, act_type="relu", name="rpn_relu")
-    rpn_cls_score = mx.symbol.Convolution(data=rpn_relu,
-                                              kernel=(1, 1), pad=(0, 0),
-                                              num_filter=2 * num_anchors,
-                                              weight=rpn_conv_cls_weight,
-                                              bias=rpn_conv_cls_bias,
-                                              name="rpn_cls_score")
-    rpn_bbox_pred = mx.symbol.Convolution(data=rpn_relu,
-                                              kernel=(1, 1), pad=(0, 0),
-                                              num_filter=4 * num_anchors,
-                                              weight=rpn_conv_bbox_weight,
-                                              bias=rpn_conv_bbox_bias,
-                                              name="rpn_bbox_pred")
-
-    # prepare rpn data
-    rpn_cls_score_reshape = mx.symbol.Reshape(data=rpn_cls_score,
-                                                  shape=(0, 2, -1),
-                                                  name="rpn_cls_score_reshape")
-    rpn_bbox_pred_reshape = mx.symbol.Reshape(data=rpn_bbox_pred,
-                                                  shape=(0, 0, -1),
-                                                  name="rpn_bbox_pred_reshape")
-
-    # loss
-    rpn_cls_prob = mx.symbol.SoftmaxOutput(data=rpn_cls_score_reshape,
-                                           label=rpn_label,
-                                           multi_output=True,
-                                           normalization='valid', use_ignore=True, ignore_label=-1,
-                                           name='rpn_cls_prob')
-
-    rpn_bbox_loss_ = rpn_bbox_weight * mx.symbol.smooth_l1(name='rpn_bbox_loss_', scalar=3.0,
-                                                           data=(rpn_bbox_pred_reshape - rpn_bbox_target))
-
-    rpn_bbox_loss = mx.sym.MakeLoss(name='rpn_bbox_loss', data=rpn_bbox_loss_,
-                                    grad_scale=1.0 / config.TRAIN.RPN_BATCH_SIZE)
-
-    rpn_group = [rpn_cls_prob, rpn_bbox_loss]
-    group = mx.symbol.Group(rpn_group)
-    return group
-
-def get_flownet(img_cur, img_ref):
-        data = mx.symbol.Concat(img_cur / 255.0, img_ref / 255.0, dim=1)
-        resize_data = mx.symbol.Pooling(name='resize_data', data=data, pooling_convention='full', pad=(0, 0),
-                                        kernel=(2, 2), stride=(2, 2), pool_type='avg')
-        flow_conv1 = mx.symbol.Convolution(name='flow_conv1', data=resize_data, num_filter=64, pad=(3, 3),
-                                           kernel=(7, 7), stride=(2, 2), no_bias=False)
-        ReLU1 = mx.symbol.LeakyReLU(name='ReLU1', data=flow_conv1, act_type='leaky', slope=0.1)
-        conv2 = mx.symbol.Convolution(name='conv2', data=ReLU1, num_filter=128, pad=(2, 2), kernel=(5, 5),
-                                      stride=(2, 2), no_bias=False)
-        ReLU2 = mx.symbol.LeakyReLU(name='ReLU2', data=conv2, act_type='leaky', slope=0.1)
-        conv3 = mx.symbol.Convolution(name='conv3', data=ReLU2, num_filter=256, pad=(2, 2), kernel=(5, 5),
-                                      stride=(2, 2), no_bias=False)
-        ReLU3 = mx.symbol.LeakyReLU(name='ReLU3', data=conv3, act_type='leaky', slope=0.1)
-        conv3_1 = mx.symbol.Convolution(name='conv3_1', data=ReLU3, num_filter=256, pad=(1, 1), kernel=(3, 3),
-                                        stride=(1, 1), no_bias=False)
-        ReLU4 = mx.symbol.LeakyReLU(name='ReLU4', data=conv3_1, act_type='leaky', slope=0.1)
-        conv4 = mx.symbol.Convolution(name='conv4', data=ReLU4, num_filter=512, pad=(1, 1), kernel=(3, 3),
-                                      stride=(2, 2), no_bias=False)
-        ReLU5 = mx.symbol.LeakyReLU(name='ReLU5', data=conv4, act_type='leaky', slope=0.1)
-        conv4_1 = mx.symbol.Convolution(name='conv4_1', data=ReLU5, num_filter=512, pad=(1, 1), kernel=(3, 3),
-                                        stride=(1, 1), no_bias=False)
-        ReLU6 = mx.symbol.LeakyReLU(name='ReLU6', data=conv4_1, act_type='leaky', slope=0.1)
-        conv5 = mx.symbol.Convolution(name='conv5', data=ReLU6, num_filter=512, pad=(1, 1), kernel=(3, 3),
-                                      stride=(2, 2), no_bias=False)
-        ReLU7 = mx.symbol.LeakyReLU(name='ReLU7', data=conv5, act_type='leaky', slope=0.1)
-        conv5_1 = mx.symbol.Convolution(name='conv5_1', data=ReLU7, num_filter=512, pad=(1, 1), kernel=(3, 3),
-                                        stride=(1, 1), no_bias=False)
-        ReLU8 = mx.symbol.LeakyReLU(name='ReLU8', data=conv5_1, act_type='leaky', slope=0.1)
-        conv6 = mx.symbol.Convolution(name='conv6', data=ReLU8, num_filter=1024, pad=(1, 1), kernel=(3, 3),
-                                      stride=(2, 2), no_bias=False)
-        ReLU9 = mx.symbol.LeakyReLU(name='ReLU9', data=conv6, act_type='leaky', slope=0.1)
-        conv6_1 = mx.symbol.Convolution(name='conv6_1', data=ReLU9, num_filter=1024, pad=(1, 1), kernel=(3, 3),
-                                        stride=(1, 1), no_bias=False)
-        ReLU10 = mx.symbol.LeakyReLU(name='ReLU10', data=conv6_1, act_type='leaky', slope=0.1)
-        Convolution1 = mx.symbol.Convolution(name='Convolution1', data=ReLU10, num_filter=2, pad=(1, 1), kernel=(3, 3),
-                                             stride=(1, 1), no_bias=False)
-        deconv5 = mx.symbol.Deconvolution(name='deconv5', data=ReLU10, num_filter=512, pad=(0, 0), kernel=(4, 4),
-                                          stride=(2, 2), no_bias=False)
-        crop_deconv5 = mx.symbol.Crop(name='crop_deconv5', *[deconv5, ReLU8], offset=(1, 1))
-        ReLU11 = mx.symbol.LeakyReLU(name='ReLU11', data=crop_deconv5, act_type='leaky', slope=0.1)
-        upsample_flow6to5 = mx.symbol.Deconvolution(name='upsample_flow6to5', data=Convolution1, num_filter=2,
-                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
-        crop_upsampled_flow6_to_5 = mx.symbol.Crop(name='crop_upsampled_flow6_to_5', *[upsample_flow6to5, ReLU8],
-                                                   offset=(1, 1))
-        Concat2 = mx.symbol.Concat(name='Concat2', *[ReLU8, ReLU11, crop_upsampled_flow6_to_5])
-        Convolution2 = mx.symbol.Convolution(name='Convolution2', data=Concat2, num_filter=2, pad=(1, 1), kernel=(3, 3),
-                                             stride=(1, 1), no_bias=False)
-        deconv4 = mx.symbol.Deconvolution(name='deconv4', data=Concat2, num_filter=256, pad=(0, 0), kernel=(4, 4),
-                                          stride=(2, 2), no_bias=False)
-        crop_deconv4 = mx.symbol.Crop(name='crop_deconv4', *[deconv4, ReLU6], offset=(1, 1))
-        ReLU12 = mx.symbol.LeakyReLU(name='ReLU12', data=crop_deconv4, act_type='leaky', slope=0.1)
-        upsample_flow5to4 = mx.symbol.Deconvolution(name='upsample_flow5to4', data=Convolution2, num_filter=2,
-                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
-        crop_upsampled_flow5_to_4 = mx.symbol.Crop(name='crop_upsampled_flow5_to_4', *[upsample_flow5to4, ReLU6],
-                                                   offset=(1, 1))
-        Concat3 = mx.symbol.Concat(name='Concat3', *[ReLU6, ReLU12, crop_upsampled_flow5_to_4])
-        Convolution3 = mx.symbol.Convolution(name='Convolution3', data=Concat3, num_filter=2, pad=(1, 1), kernel=(3, 3),
-                                             stride=(1, 1), no_bias=False)
-        deconv3 = mx.symbol.Deconvolution(name='deconv3', data=Concat3, num_filter=128, pad=(0, 0), kernel=(4, 4),
-                                          stride=(2, 2), no_bias=False)
-        crop_deconv3 = mx.symbol.Crop(name='crop_deconv3', *[deconv3, ReLU4], offset=(1, 1))
-        ReLU13 = mx.symbol.LeakyReLU(name='ReLU13', data=crop_deconv3, act_type='leaky', slope=0.1)
-        upsample_flow4to3 = mx.symbol.Deconvolution(name='upsample_flow4to3', data=Convolution3, num_filter=2,
-                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
-        crop_upsampled_flow4_to_3 = mx.symbol.Crop(name='crop_upsampled_flow4_to_3', *[upsample_flow4to3, ReLU4],
-                                                   offset=(1, 1))
-        Concat4 = mx.symbol.Concat(name='Concat4', *[ReLU4, ReLU13, crop_upsampled_flow4_to_3])
-        Convolution4 = mx.symbol.Convolution(name='Convolution4', data=Concat4, num_filter=2, pad=(1, 1), kernel=(3, 3),
-                                             stride=(1, 1), no_bias=False)
-        deconv2 = mx.symbol.Deconvolution(name='deconv2', data=Concat4, num_filter=64, pad=(0, 0), kernel=(4, 4),
-                                          stride=(2, 2), no_bias=False)
-        crop_deconv2 = mx.symbol.Crop(name='crop_deconv2', *[deconv2, ReLU2], offset=(1, 1))
-        ReLU14 = mx.symbol.LeakyReLU(name='ReLU14', data=crop_deconv2, act_type='leaky', slope=0.1)
-        upsample_flow3to2 = mx.symbol.Deconvolution(name='upsample_flow3to2', data=Convolution4, num_filter=2,
-                                                    pad=(0, 0), kernel=(4, 4), stride=(2, 2), no_bias=False)
-        crop_upsampled_flow3_to_2 = mx.symbol.Crop(name='crop_upsampled_flow3_to_2', *[upsample_flow3to2, ReLU2],
-                                                   offset=(1, 1))
-        Concat5 = mx.symbol.Concat(name='Concat5', *[ReLU2, ReLU14, crop_upsampled_flow3_to_2])
-        Concat5 = mx.symbol.Pooling(name='resize_concat5', data=Concat5, pooling_convention='full', pad=(0, 0),
-                                    kernel=(2, 2), stride=(2, 2), pool_type='avg')
-        Convolution5 = mx.symbol.Convolution(name='Convolution5', data=Concat5, num_filter=2, pad=(1, 1), kernel=(3, 3),
-                                             stride=(1, 1), no_bias=False)
-
-        Convolution5_scale_bias = mx.sym.Variable(name='Convolution5_scale_bias', lr_mult=0.0)
-        Convolution5_scale = mx.symbol.Convolution(name='Convolution5_scale', data=Concat5, num_filter=1024, pad=(0, 0),
-                                                   kernel=(1, 1), stride=(1, 1),
-                                                   bias=Convolution5_scale_bias, no_bias=False)
-        return Convolution5 * 2.5, Convolution5_scale
-
-def get_resnet_C4_DFF_rpn(num_anchors=config.NUM_ANCHORS):
-    data = mx.symbol.Variable(name="data")
-    data_ref = mx.sym.Variable(name="data_ref")
-    eq_flag = mx.sym.Variable(name="eq_flag")
-    rpn_label = mx.symbol.Variable(name='label')
-    rpn_bbox_target = mx.symbol.Variable(name='bbox_target')
-    rpn_bbox_weight = mx.symbol.Variable(name='bbox_weight')
-
-    # shared convolutional layers, bottom up
-    conv_feat = get_resnet_conv(data_ref)
-    # shared convolutional layers, top down
-    flow, scale_map = get_flownet(data, data_ref)
-    flow_grid = mx.sym.GridGenerator(data=flow, transform_type='warp', name='flow_grid')
-    warp_conv_feat = mx.sym.BilinearSampler(data=conv_feat, grid=flow_grid, name='warping_feat')
-    warp_conv_feat = warp_conv_feat * scale_map
-    select_conv_feat = mx.sym.take(mx.sym.Concat(*[warp_conv_feat, conv_feat], dim=0), eq_flag)
-
-    # shared parameters for predictions
-    rpn_conv_weight = mx.symbol.Variable('rpn_conv_weight')
-    rpn_conv_bias = mx.symbol.Variable('rpn_conv_bias')
-    rpn_conv_cls_weight = mx.symbol.Variable('rpn_conv_cls_weight')
-    rpn_conv_cls_bias = mx.symbol.Variable('rpn_conv_cls_bias')
-    rpn_conv_bbox_weight = mx.symbol.Variable('rpn_conv_bbox_weight')
-    rpn_conv_bbox_bias = mx.symbol.Variable('rpn_conv_bbox_bias')
-
-    rpn_conv = mx.symbol.Convolution(data=select_conv_feat,
-                                     kernel=(3, 3), pad=(1, 1),
-                                     num_filter=1024,
-                                     weight=rpn_conv_weight,
-                                     bias=rpn_conv_bias)
-    rpn_relu = mx.symbol.Activation(data=rpn_conv, act_type="relu", name="rpn_relu")
-    rpn_cls_score = mx.symbol.Convolution(data=rpn_relu,
-                                          kernel=(1, 1), pad=(0, 0),
-                                          num_filter=2 * num_anchors,
-                                          weight=rpn_conv_cls_weight,
-                                          bias=rpn_conv_cls_bias,
-                                          name="rpn_cls_score")
-    rpn_bbox_pred = mx.symbol.Convolution(data=rpn_relu,
-                                          kernel=(1, 1), pad=(0, 0),
-                                          num_filter=4 * num_anchors,
-                                          weight=rpn_conv_bbox_weight,
-                                          bias=rpn_conv_bbox_bias,
-                                          name="rpn_bbox_pred")
-
-    # prepare rpn data
-    rpn_cls_score_reshape = mx.symbol.Reshape(data=rpn_cls_score,
-                                              shape=(0, 2, -1),
-                                              name="rpn_cls_score_reshape")
-    rpn_bbox_pred_reshape = mx.symbol.Reshape(data=rpn_bbox_pred,
-                                              shape=(0, 0, -1),
-                                              name="rpn_bbox_pred_reshape")
-    # loss
-    rpn_cls_prob = mx.symbol.SoftmaxOutput(data=rpn_cls_score_reshape,
-                                           label=rpn_label,
-                                           multi_output=True,
-                                           normalization='valid', use_ignore=True, ignore_label=-1,
-                                           name='rpn_cls_prob')
-
-    rpn_bbox_loss_ = rpn_bbox_weight * mx.symbol.smooth_l1(name='rpn_bbox_loss_', scalar=3.0,
-                                                           data=(rpn_bbox_pred_reshape - rpn_bbox_target))
-
-    rpn_bbox_loss = mx.sym.MakeLoss(name='rpn_bbox_loss', data=rpn_bbox_loss_,
-                                    grad_scale=1.0 / config.TRAIN.RPN_BATCH_SIZE)
-
-    rpn_group = [rpn_cls_prob, rpn_bbox_loss]
-    group = mx.symbol.Group(rpn_group)
-    return group
-
-
 def get_resnet_fpn_rpn_test(num_anchors=config.NUM_ANCHORS):
     data = mx.symbol.Variable(name="data")
     im_info = mx.symbol.Variable(name="im_info")
@@ -619,6 +489,68 @@ def get_resnet_fpn_rpn_test(num_anchors=config.NUM_ANCHORS):
 
     # rois = group[0]
     # score = group[1]
+    return group
+
+def get_resnet_C4_rpn(num_anchors=config.NUM_ANCHORS):
+    data = mx.symbol.Variable(name="data")
+    rpn_label = mx.symbol.Variable(name='label')
+    rpn_bbox_target = mx.symbol.Variable(name='bbox_target')
+    rpn_bbox_weight = mx.symbol.Variable(name='bbox_weight')
+
+    # shared convolutional layers, bottom up
+    conv_feat = get_resnet_conv(data)
+
+    # shared parameters for predictions
+    rpn_conv_weight      = mx.symbol.Variable('rpn_conv_weight')
+    rpn_conv_bias        = mx.symbol.Variable('rpn_conv_bias')
+    rpn_conv_cls_weight  = mx.symbol.Variable('rpn_conv_cls_weight')
+    rpn_conv_cls_bias    = mx.symbol.Variable('rpn_conv_cls_bias')
+    rpn_conv_bbox_weight = mx.symbol.Variable('rpn_conv_bbox_weight')
+    rpn_conv_bbox_bias   = mx.symbol.Variable('rpn_conv_bbox_bias')
+
+    rpn_conv = mx.symbol.Convolution(data=conv_feat,
+                                         kernel=(3, 3), pad=(1, 1),
+                                         num_filter=512,
+                                         weight=rpn_conv_weight,
+                                         bias=rpn_conv_bias)
+    rpn_relu = mx.symbol.Activation(data=rpn_conv, act_type="relu", name="rpn_relu")
+    rpn_cls_score = mx.symbol.Convolution(data=rpn_relu,
+                                              kernel=(1, 1), pad=(0, 0),
+                                              num_filter=2 * num_anchors,
+                                              weight=rpn_conv_cls_weight,
+                                              bias=rpn_conv_cls_bias,
+                                              name="rpn_cls_score")
+    rpn_bbox_pred = mx.symbol.Convolution(data=rpn_relu,
+                                              kernel=(1, 1), pad=(0, 0),
+                                              num_filter=4 * num_anchors,
+                                              weight=rpn_conv_bbox_weight,
+                                              bias=rpn_conv_bbox_bias,
+                                              name="rpn_bbox_pred")
+
+    # prepare rpn data
+    rpn_cls_score_reshape = mx.symbol.Reshape(data=rpn_cls_score,
+                                                  shape=(0, 2, -1),
+                                             name="rpn_cls_score_reshape")
+
+    rpn_bbox_pred_reshape = mx.symbol.Reshape(data=rpn_bbox_pred,
+                                                  shape=(0, 0, -1),
+                                                  name="rpn_bbox_pred_reshape")
+
+    # loss
+    rpn_cls_prob = mx.symbol.SoftmaxOutput(data=rpn_cls_score_reshape,
+                                           label=rpn_label,
+                                           multi_output=True,
+                                           normalization='valid', use_ignore=True, ignore_label=-1,
+                                           name='rpn_cls_prob')
+
+    rpn_bbox_loss_ = rpn_bbox_weight * mx.symbol.smooth_l1(name='rpn_bbox_loss_', scalar=3.0,
+                                                           data=(rpn_bbox_pred_reshape - rpn_bbox_target))
+
+    rpn_bbox_loss = mx.sym.MakeLoss(name='rpn_bbox_loss', data=rpn_bbox_loss_,
+                                    grad_scale=1.0 / config.TRAIN.RPN_BATCH_SIZE)
+
+    rpn_group = [rpn_cls_prob, rpn_bbox_loss]
+    group = mx.symbol.Group(rpn_group)
     return group
 
 def get_resnet_C4_rpn_test(num_anchors=config.NUM_ANCHORS):
@@ -687,6 +619,148 @@ def get_resnet_C4_rpn_test(num_anchors=config.NUM_ANCHORS):
     # score = group[1]
     return group
 
+def get_resnet_C4_DFF_rpn(num_anchors=config.NUM_ANCHORS):
+    data = mx.symbol.Variable(name="data")
+    data_ref = mx.sym.Variable(name="data_ref")
+    eq_flag = mx.sym.Variable(name="eq_flag")
+    rpn_label = mx.symbol.Variable(name='label')
+    rpn_bbox_target = mx.symbol.Variable(name='bbox_target')
+    rpn_bbox_weight = mx.symbol.Variable(name='bbox_weight')
+
+    # shared convolutional layers, bottom up
+    conv_feat = get_resnet_conv(data_ref)
+    flow, scale_map = get_flownet(data, data_ref)
+    flow_grid = mx.sym.GridGenerator(data=flow, transform_type='warp', name='flow_grid')
+    warp_conv_feat = mx.sym.BilinearSampler(data=conv_feat, grid=flow_grid, name='warping_feat')
+    warp_conv_feat = warp_conv_feat * scale_map
+    select_conv_feat = mx.sym.take(mx.sym.Concat(*[warp_conv_feat, conv_feat], dim=0), eq_flag)
+
+    # shared parameters for predictions
+    rpn_conv_weight = mx.symbol.Variable('rpn_conv_weight')
+    rpn_conv_bias = mx.symbol.Variable('rpn_conv_bias')
+    rpn_conv_cls_weight = mx.symbol.Variable('rpn_conv_cls_weight')
+    rpn_conv_cls_bias = mx.symbol.Variable('rpn_conv_cls_bias')
+    rpn_conv_bbox_weight = mx.symbol.Variable('rpn_conv_bbox_weight')
+    rpn_conv_bbox_bias = mx.symbol.Variable('rpn_conv_bbox_bias')
+
+    rpn_conv = mx.symbol.Convolution(data=select_conv_feat,
+                                     kernel=(3, 3), pad=(1, 1),
+                                     num_filter=1024,
+                                     weight=rpn_conv_weight,
+                                     bias=rpn_conv_bias)
+    rpn_relu = mx.symbol.Activation(data=rpn_conv, act_type="relu", name="rpn_relu")
+    rpn_cls_score = mx.symbol.Convolution(data=rpn_relu,
+                                          kernel=(1, 1), pad=(0, 0),
+                                          num_filter=2 * num_anchors,
+                                          weight=rpn_conv_cls_weight,
+                                          bias=rpn_conv_cls_bias,
+                                          name="rpn_cls_score")
+    rpn_bbox_pred = mx.symbol.Convolution(data=rpn_relu,
+                                          kernel=(1, 1), pad=(0, 0),
+                                          num_filter=4 * num_anchors,
+                                          weight=rpn_conv_bbox_weight,
+                                          bias=rpn_conv_bbox_bias,
+                                          name="rpn_bbox_pred")
+
+    # prepare rpn data
+    rpn_cls_score_reshape = mx.symbol.Reshape(data=rpn_cls_score,
+                                              shape=(0, 2, -1),
+                                              name="rpn_cls_score_reshape")
+
+    rpn_bbox_pred_reshape = mx.symbol.Reshape(data=rpn_bbox_pred,
+                                              shape=(0, 0, -1),
+                                              name="rpn_bbox_pred_reshape")
+    # loss
+    rpn_cls_prob = mx.symbol.SoftmaxOutput(data=rpn_cls_score_reshape,
+                                           label=rpn_label,
+                                           multi_output=True,
+                                           normalization='valid', use_ignore=True, ignore_label=-1,
+                                           name='rpn_cls_prob')
+
+    rpn_bbox_loss_ = rpn_bbox_weight * mx.symbol.smooth_l1(name='rpn_bbox_loss_', scalar=3.0,
+                                                           data=(rpn_bbox_pred_reshape - rpn_bbox_target))
+
+    rpn_bbox_loss = mx.sym.MakeLoss(name='rpn_bbox_loss', data=rpn_bbox_loss_,
+                                    grad_scale=1.0 / config.TRAIN.RPN_BATCH_SIZE)
+
+    rpn_group = [rpn_cls_prob, rpn_bbox_loss]
+    group = mx.symbol.Group(rpn_group)
+    return group
+
+def get_resnet_C4_DFF_rpn_test(num_anchors=config.NUM_ANCHORS):
+    data = mx.symbol.Variable(name="data")
+    im_info = mx.symbol.Variable(name="im_info")
+    data_ref = mx.sym.Variable(name="data_ref")
+    eq_flag = mx.sym.Variable(name="eq_flag")
+
+    # shared convolutional layers
+    conv_feat = get_resnet_conv(data_ref)
+    # shared convolutional layers, top down
+    flow, scale_map = get_flownet(data, data_ref)
+    flow_grid = mx.sym.GridGenerator(data=flow, transform_type='warp', name='flow_grid')
+    warp_conv_feat = mx.sym.BilinearSampler(data=conv_feat, grid=flow_grid, name='warping_feat')
+    warp_conv_feat = warp_conv_feat * scale_map
+    select_conv_feat = mx.sym.take(mx.sym.Concat(*[warp_conv_feat, conv_feat], dim=0), eq_flag)
+
+    # # shared parameters for predictions
+    rpn_conv_weight      = mx.symbol.Variable('rpn_conv_weight')
+    rpn_conv_bias        = mx.symbol.Variable('rpn_conv_bias')
+    rpn_conv_cls_weight  = mx.symbol.Variable('rpn_conv_cls_weight')
+    rpn_conv_cls_bias    = mx.symbol.Variable('rpn_conv_cls_bias')
+    rpn_conv_bbox_weight = mx.symbol.Variable('rpn_conv_bbox_weight')
+    rpn_conv_bbox_bias   = mx.symbol.Variable('rpn_conv_bbox_bias')
+
+    rpn_cls_prob_dict = {}
+    rpn_bbox_pred_dict = {}
+
+    rpn_conv = mx.symbol.Convolution(data=select_conv_feat,
+                                         kernel=(3, 3), pad=(1, 1),
+                                         num_filter=1024,
+                                         weight=rpn_conv_weight,
+                                         bias=rpn_conv_bias)
+    rpn_relu = mx.symbol.Activation(data=rpn_conv, act_type="relu", name="rpn_relu")
+    rpn_cls_score = mx.symbol.Convolution(data=rpn_relu,
+                                              kernel=(1, 1), pad=(0, 0),
+                                              num_filter=2 * num_anchors,
+                                              weight=rpn_conv_cls_weight,
+                                              bias=rpn_conv_cls_bias,
+                                              name="rpn_cls_score")
+    rpn_bbox_pred = mx.symbol.Convolution(data=rpn_relu,
+                                              kernel=(1, 1), pad=(0, 0),
+                                              num_filter=4 * num_anchors,
+                                              weight=rpn_conv_bbox_weight,
+                                              bias=rpn_conv_bbox_bias,
+                                              name="rpn_bbox_pred")
+
+    # ROI Proposal
+    rpn_cls_score_reshape = mx.symbol.Reshape(data=rpn_cls_score,
+                                                  shape=(0, 2, -1, 0),
+                                                  name="rpn_cls_score_reshape")
+    rpn_cls_prob = mx.symbol.SoftmaxActivation(data=rpn_cls_score_reshape,
+                                                   mode="channel",
+                                                   name="rpn_cls_prob")
+    rpn_cls_prob_reshape = mx.symbol.Reshape(data=rpn_cls_prob,
+                                                 shape=(0, 2 * num_anchors, -1, 0),
+                                                 name='rpn_cls_prob_reshape')
+
+    rpn_cls_prob_dict.update({'cls_prob': rpn_cls_prob_reshape})
+    rpn_bbox_pred_dict.update({'bbox_pred': rpn_bbox_pred})
+
+    args_dict = dict(rpn_cls_prob_dict.items() + rpn_bbox_pred_dict.items())
+    aux_dict = {'im_info': im_info, 'name': 'rois',
+                'op_type': 'proposal', 'output_score': True,
+                'feat_stride': config.RPN_FEAT_STRIDE, 'scales': tuple(config.ANCHOR_SCALES),
+                'ratios': tuple(config.ANCHOR_RATIOS),
+                'rpn_pre_nms_top_n': config.TEST.PROPOSAL_PRE_NMS_TOP_N,
+                'rpn_post_nms_top_n': config.TEST.PROPOSAL_POST_NMS_TOP_N,
+                'rpn_min_size': config.TEST.RPN_MIN_SIZE,
+                'threshold': config.TEST.RPN_NMS_THRESH}
+    # Proposal
+    group = mx.symbol.Custom(**dict(args_dict.items()+aux_dict.items()))
+
+    # rois = group[0]
+    # score = group[1]
+    return group
 
 def get_resnet_fpn_maskrcnn(num_classes=config.NUM_CLASSES):
     rcnn_feat_stride = config.RCNN_FEAT_STRIDE
@@ -857,82 +931,31 @@ def get_resnet_fpn_maskrcnn(num_classes=config.NUM_CLASSES):
 def get_resnet_C4_maskrcnn(num_classes=config.NUM_CLASSES):
     rcnn_feat_stride = config.RCNN_FEAT_STRIDE
     data = mx.symbol.Variable(name="data")
-    rois = dict()
-    label = dict()
-    bbox_target = dict()
-    bbox_weight = dict()
-    mask_target = dict()
-    mask_weight = dict()
-    for s in rcnn_feat_stride:
-        rois['rois_stride%s' % s] = mx.symbol.Variable(name='rois_stride%s' % s)
-        label['label_stride%s' % s] = mx.symbol.Variable(name='label_stride%s' % s)
-        bbox_target['bbox_target_stride%s' % s] = mx.symbol.Variable(name='bbox_target_stride%s' % s)
-        bbox_weight['bbox_weight_stride%s' % s] = mx.symbol.Variable(name='bbox_weight_stride%s' % s)
-        mask_target['mask_target_stride%s' % s] = mx.symbol.Variable(name='mask_target_stride%s' % s)
-        mask_weight['mask_weight_stride%s' % s] = mx.symbol.Variable(name='mask_weight_stride%s' % s)
+
+    rois = mx.symbol.Variable(name='rois')
+    label = mx.symbol.Variable(name='label')
+    bbox_target = mx.symbol.Variable(name='bbox_target')
+    bbox_weight = mx.symbol.Variable(name='bbox_weight')
+    mask_target = mx.symbol.Variable(name='mask_target')
+    mask_weight = mx.symbol.Variable(name='mask_weight')
 
     # reshape input
-    for s in rcnn_feat_stride:
-        rois['rois_stride%s' % s] = mx.symbol.Reshape(data=rois['rois_stride%s' % s],
-                                                      shape=(-1, 5),
-                                                      name='rois_stride%s_reshape' % s)
+    rois = mx.symbol.Reshape(data=rois, shape=(-1, 5), name='rois_reshape')
 
-        label['label_stride%s' % s] = mx.symbol.Reshape(data=label['label_stride%s' % s], shape=(-1,), name='label_stride%s_reshape'%s)
-        bbox_target['bbox_target_stride%s' % s] = mx.symbol.Reshape(data=bbox_target['bbox_target_stride%s' % s],
-                                                                    shape=(-1, 4 * num_classes),
-                                                                    name='bbox_target_stride%s_reshape'%s)
-        bbox_weight['bbox_weight_stride%s' % s] = mx.symbol.Reshape(data=bbox_weight['bbox_weight_stride%s' % s],
-                                                                    shape=(-1, 4 * num_classes),
-                                                                    name='bbox_weight_stride%s_reshape'%s)
-        mask_target['mask_target_stride%s' % s] = mx.symbol.Reshape(data=mask_target['mask_target_stride%s' % s],
-                                                                    shape=(-1, num_classes, 28, 28),
-                                                                    name='mask_target_stride%s_reshape'%s)
-        mask_weight['mask_weight_stride%s' % s] = mx.symbol.Reshape(data=mask_weight['mask_weight_stride%s' % s],
-                                                                    shape=(-1, num_classes, 1, 1),
-                                                                    name='mask_weight_stride%s_reshape'%s)
-
-    label_list = []
-    bbox_target_list = []
-    bbox_weight_list = []
-    mask_target_list = []
-    mask_weight_list = []
-    for s in rcnn_feat_stride:
-        label_list.append(label['label_stride%s' % s])
-        bbox_target_list.append(bbox_target['bbox_target_stride%s' % s])
-        bbox_weight_list.append(bbox_weight['bbox_weight_stride%s' % s])
-        mask_target_list.append(mask_target['mask_target_stride%s' % s])
-        mask_weight_list.append(mask_weight['mask_weight_stride%s' % s])
-
-    label = mx.symbol.concat(*label_list, dim=0)
-    bbox_target = mx.symbol.concat(*bbox_target_list, dim=0)
-    bbox_weight = mx.symbol.concat(*bbox_weight_list, dim=0)
-    mask_target = mx.symbol.concat(*mask_target_list, dim=0)
-    mask_weight = mx.symbol.concat(*mask_weight_list, dim=0)
+    label = mx.symbol.Reshape(data=label, shape=(-1,), name='label_reshape')
+    bbox_target= mx.symbol.Reshape(data=bbox_target, shape=(-1, 4 * num_classes),
+                                                       name='bbox_target_reshape')
+    bbox_weight = mx.symbol.Reshape(data=bbox_weight, shape=(-1, 4 * num_classes),
+                                                       name='bbox_weight_reshape')
+    mask_target= mx.symbol.Reshape(data=mask_target, shape=(-1, num_classes, 14, 14),
+                                                       name='mask_target_reshape')
+    mask_weight = mx.symbol.Reshape(data=mask_weight, shape=(-1, num_classes, 1, 1),
+                                                       name='mask_weight_reshape')
 
     # shared convolutional layers, bottom up
     conv_feat = get_resnet_conv(data)
 
-    # shared convolutional layers, top down
-    conv_feat = conv_feat[1]
-
     # shared parameters for predictions
-    rcnn_fc6_weight     = mx.symbol.Variable('rcnn_fc6_weight')
-    rcnn_fc6_bias       = mx.symbol.Variable('rcnn_fc6_bias')
-    rcnn_fc7_weight     = mx.symbol.Variable('rcnn_fc7_weight')
-    rcnn_fc7_bias       = mx.symbol.Variable('rcnn_fc7_bias')
-    rcnn_fc_cls_weight  = mx.symbol.Variable('rcnn_fc_cls_weight')
-    rcnn_fc_cls_bias    = mx.symbol.Variable('rcnn_fc_cls_bias')
-    rcnn_fc_bbox_weight = mx.symbol.Variable('rcnn_fc_bbox_weight')
-    rcnn_fc_bbox_bias   = mx.symbol.Variable('rcnn_fc_bbox_bias')
-
-    mask_conv_1_weight = mx.symbol.Variable('mask_conv_1_weight')
-    mask_conv_1_bias   = mx.symbol.Variable('mask_conv_1_bias')
-    mask_conv_2_weight = mx.symbol.Variable('mask_conv_2_weight')
-    mask_conv_2_bias   = mx.symbol.Variable('mask_conv_2_bias')
-    mask_conv_3_weight = mx.symbol.Variable('mask_conv_3_weight')
-    mask_conv_3_bias   = mx.symbol.Variable('mask_conv_3_bias')
-    mask_conv_4_weight = mx.symbol.Variable('mask_conv_4_weight')
-    mask_conv_4_bias   = mx.symbol.Variable('mask_conv_4_bias')
     mask_deconv_1_weight = mx.symbol.Variable('mask_deconv_1_weight')
     mask_deconv_2_weight = mx.symbol.Variable('mask_deconv_2_weight')
     mask_deconv_2_bias = mx.symbol.Variable('mask_deconv_2_bias')
@@ -984,8 +1007,105 @@ def get_resnet_C4_maskrcnn(num_classes=config.NUM_CLASSES):
         rcnn_group[ind] = mx.symbol.Reshape(data=rcnn_group[ind], shape=(config.TRAIN.BATCH_IMAGES, -1, last_shape),
                                             name=name + '_reshape')
 
-    mask_act_concat = mx.symbol.concat(*mask_deconv_act_list, dim=0)
-    mask_prob = mx.symbol.Activation(data=mask_act_concat, act_type='sigmoid', name="mask_prob")
+
+    mask_prob = mx.symbol.Activation(data=mask_deconv_2, act_type='sigmoid', name="mask_prob")
+    mask_output = mx.symbol.Custom(mask_prob=mask_prob, mask_target=mask_target, mask_weight=mask_weight,
+                                   label=label, name="mask_output", op_type='MaskOutput')
+    mask_group = [mask_output]
+    # group output
+    group = mx.symbol.Group(rcnn_group+mask_group)
+    return group
+
+def get_resnet_C4_DFF_maskrcnn(num_classes=config.NUM_CLASSES):
+    rcnn_feat_stride = config.RCNN_FEAT_STRIDE
+    data = mx.symbol.Variable(name="data")
+    data_ref = mx.sym.Variable(name="data_ref")
+    eq_flag = mx.sym.Variable(name="eq_flag")
+    rois = mx.symbol.Variable(name='rois')
+    label = mx.symbol.Variable(name='label')
+    bbox_target = mx.symbol.Variable(name='bbox_target')
+    bbox_weight = mx.symbol.Variable(name='bbox_weight')
+    mask_target = mx.symbol.Variable(name='mask_target')
+    mask_weight = mx.symbol.Variable(name='mask_weight')
+
+    # reshape input
+    rois = mx.symbol.Reshape(data=rois, shape=(-1, 5), name='rois_reshape')
+
+    label = mx.symbol.Reshape(data=label, shape=(-1,), name='label_reshape')
+    bbox_target= mx.symbol.Reshape(data=bbox_target, shape=(-1, 4 * num_classes),
+                                                       name='bbox_target_reshape')
+    bbox_weight = mx.symbol.Reshape(data=bbox_weight, shape=(-1, 4 * num_classes),
+                                                       name='bbox_weight_reshape')
+    mask_target= mx.symbol.Reshape(data=mask_target, shape=(-1, num_classes, 14, 14),
+                                                       name='mask_target_reshape')
+    mask_weight = mx.symbol.Reshape(data=mask_weight, shape=(-1, num_classes, 1, 1),
+                                                       name='mask_weight_reshape')
+
+    # shared convolutional layers, bottom up
+    conv_feat = get_resnet_conv(data)
+    flow, scale_map = get_flownet(data, data_ref)
+    flow_grid = mx.sym.GridGenerator(data=flow, transform_type='warp', name='flow_grid')
+    warp_conv_feat = mx.sym.BilinearSampler(data=conv_feat, grid=flow_grid, name='warping_feat')
+    warp_conv_feat = warp_conv_feat * scale_map
+    select_conv_feat = mx.sym.take(mx.sym.Concat(*[warp_conv_feat, conv_feat], dim=0), eq_flag)
+
+    # shared parameters for predictions
+    rcnn_fc_cls_weight = mx.symbol.Variable('rcnn_fc_cls_weight')
+    rcnn_fc_cls_bias = mx.symbol.Variable('rcnn_fc_cls_bias')
+    rcnn_fc_bbox_weight = mx.symbol.Variable('rcnn_fc_bbox_weight')
+    rcnn_fc_bbox_bias = mx.symbol.Variable('rcnn_fc_bbox_bias')
+    mask_deconv_1_weight = mx.symbol.Variable('mask_deconv_1_weight')
+    mask_deconv_2_weight = mx.symbol.Variable('mask_deconv_2_weight')
+    mask_deconv_2_bias = mx.symbol.Variable('mask_deconv_2_bias')
+
+    if config.ROIALIGN:
+        roi_pool = mx.symbol.ROIAlign(
+                name='roi_pool', data=select_conv_feat, rois=rois,
+                pooled_size=(14, 14),
+                spatial_scale=1.0 / rcnn_feat_stride)
+    else:
+        roi_pool = mx.symbol.ROIPooling(
+                name='roi_pool', data=select_conv_feat, rois=rois,
+                pooled_size=(14, 14),
+                spatial_scale=1.0 / rcnn_feat_stride)
+    # res5
+    unit = residual_unit(data=roi_pool, num_filter=filter_list[3], stride=(2, 2), dim_match=False, name='stage4_unit1')
+    for i in range(2, units[3] + 1):
+        unit = residual_unit(data=unit, num_filter=filter_list[3], stride=(1, 1), dim_match=True,
+                             name='stage4_unit%s' % i)
+    bn1 = mx.sym.BatchNorm(data=unit, fix_gamma=False, eps=eps, use_global_stats=use_global_stats, name='bn1')
+    relu1 = mx.sym.Activation(data=bn1, act_type='relu', name='relu1')
+
+    pool1 = mx.symbol.Pooling(data=relu1, global_pool=True, kernel=(7, 7), pool_type='avg', name='pool1')
+    # classification
+    cls_score = mx.symbol.FullyConnected(name='cls_score', weight=rcnn_fc_cls_weight, bias=rcnn_fc_cls_bias, data=pool1, num_hidden=num_classes)
+    # bounding box regression
+    bbox_pred = mx.symbol.FullyConnected(name='bbox_pred', weight=rcnn_fc_bbox_weight, bias=rcnn_fc_bbox_bias, data=pool1, num_hidden=num_classes * 4)
+
+    # MASK
+    mask_deconv_1 = mx.symbol.Deconvolution(data=relu1, kernel=(4, 4), stride=(2, 2), num_filter=256, pad=(1, 1),
+                                                workspace=512, weight=mask_deconv_1_weight, name="mask_deconv1")
+    mask_deconv_2 = mx.symbol.Convolution(data=mask_deconv_1, kernel=(1, 1), num_filter=num_classes,
+                                              workspace=512, weight=mask_deconv_2_weight, bias=mask_deconv_2_bias, name="mask_deconv2")
+
+
+    # loss
+    cls_prob = mx.symbol.SoftmaxOutput(data=cls_score,
+                                           label=label,
+                                           multi_output=True,
+                                           normalization='valid', use_ignore=True, ignore_label=-1,
+                                           name='rcnn_cls_prob')
+    bbox_loss_ = bbox_weight * mx.symbol.smooth_l1(name='rcnn_bbox_loss_', scalar=1.0,
+                                                   data=(bbox_pred - bbox_target))
+
+    bbox_loss = mx.sym.MakeLoss(name='bbox_loss', data=bbox_loss_, grad_scale=1.0 / config.TRAIN.BATCH_ROIS)
+    rcnn_group = [cls_prob, bbox_loss]
+    for ind, name, last_shape in zip(range(len(rcnn_group)), ['cls_prob', 'bbox_loss'], [num_classes, num_classes * 4]):
+        rcnn_group[ind] = mx.symbol.Reshape(data=rcnn_group[ind], shape=(config.TRAIN.BATCH_IMAGES, -1, last_shape),
+                                            name=name + '_reshape')
+
+
+    mask_prob = mx.symbol.Activation(data=mask_deconv_2, act_type='sigmoid', name="mask_prob")
     mask_output = mx.symbol.Custom(mask_prob=mask_prob, mask_target=mask_target, mask_weight=mask_weight,
                                    label=label, name="mask_output", op_type='MaskOutput')
     mask_group = [mask_output]

@@ -15,7 +15,7 @@ roidb extended format [image_index]
 import numpy as np
 import numpy.random as npr
 from ..config import config
-from ..io.image import get_image, tensor_vstack
+from ..io.image import get_image, get_pair_image, tensor_vstack
 from ..processing.bbox_transform import bbox_overlaps, nonlinear_transform
 from ..processing.bbox_regression import expand_bbox_regression_targets
 from ..pycocotools.mask import decode
@@ -155,6 +155,153 @@ def get_fpn_maskrcnn_batch(roidb):
 
     return im_array, level_related_data_on_imgs
 
+def get_maskrcnn_batch(roidb):
+    """
+    return a dictionary that contains raw data.
+    """
+    num_images = len(roidb)
+    imgs, roidb = get_image(roidb, scale=config.TRAIN.SCALE)
+    im_array = tensor_vstack(imgs)
+
+    assert config.TRAIN.BATCH_ROIS % config.TRAIN.BATCH_IMAGES == 0, \
+        'BATCHIMAGES {} must divide BATCH_ROIS {}'.format(config.TRAIN.BATCH_IMAGES, config.TRAIN.BATCH_ROIS)
+    rois_per_image = config.TRAIN.BATCH_ROIS / config.TRAIN.BATCH_IMAGES
+    fg_rois_per_image = np.round(config.TRAIN.FG_FRACTION * rois_per_image).astype(int)
+
+    rois_array = list()
+    labels_array = list()
+    bbox_targets_array = list()
+    bbox_weights_array = list()
+    mask_targets_array = list()
+    mask_weights_array = list()
+
+    # Sample rois
+    for im_i in range(num_images):
+        roi_rec = roidb[im_i]
+        # infer num_classes from gt_overlaps
+        num_classes = roi_rec['gt_overlaps'].shape[1]
+        # label = class RoI has max overlap with
+        rois = roi_rec['boxes']
+        labels = roi_rec['max_classes']
+        overlaps = roi_rec['max_overlaps']
+        bbox_targets = roi_rec['bbox_targets']
+        im_info = roi_rec['im_info']
+
+        mask_targets = roi_rec['mask_targets']
+        mask_labels = roi_rec['mask_labels']
+        mask_inds = roi_rec['mask_inds']
+
+
+        im_rois, labels, bbox_targets, bbox_weights, mask_targets, mask_weights = \
+            sample_rois(rois, fg_rois_per_image, rois_per_image, num_classes,
+                            labels, overlaps, bbox_targets, mask_targets=mask_targets, mask_labels=mask_labels, mask_inds=mask_inds)
+
+        # project im_rois
+        # do not round roi
+        rois = im_rois
+        batch_index = im_i * np.ones((rois.shape[0], 1))
+        rois_array_this_image = np.hstack((batch_index, rois))
+        rois_array.append(rois_array_this_image)
+
+        # add labels
+        labels_array.append(labels)
+        bbox_targets_array.append(bbox_targets)
+        bbox_weights_array.append(bbox_weights)
+        mask_targets_array.append(mask_targets)
+        mask_weights_array.append(mask_weights)
+
+    rois_array = np.array(rois_array)
+    labels_array = np.array(labels_array)
+    bbox_targets_array = np.array(bbox_targets_array)
+    bbox_weights_array = np.array(bbox_weights_array)
+
+    data = {'data': im_array,
+            'rois': rois_array}
+    label = {'label': labels_array,
+             'bbox_target': bbox_targets_array,
+             'bbox_weight': bbox_weights_array,
+             'mask_target': mask_targets_array,
+             'mask_weight': mask_weights_array}
+
+
+    return data, label
+
+def get_maskrcnn_pair_batch(roidb):
+    """
+    return a dictionary that contains raw data.
+    """
+    num_images = len(roidb)
+    imgs, ref_imgs, eq_flags, roidb = get_pair_image(roidb, scale=config.TRAIN.SCALE)
+    im_array = imgs[0]
+    ref_im_array = ref_imgs[0]
+    eq_flag_array = np.array([eq_flags[0], ], dtype=np.float32)
+    im_info = np.array([roidb[0]['im_info']], dtype=np.float32)
+
+    assert config.TRAIN.BATCH_ROIS % config.TRAIN.BATCH_IMAGES == 0, \
+        'BATCHIMAGES {} must divide BATCH_ROIS {}'.format(config.TRAIN.BATCH_IMAGES, config.TRAIN.BATCH_ROIS)
+    rois_per_image = config.TRAIN.BATCH_ROIS / config.TRAIN.BATCH_IMAGES
+    fg_rois_per_image = np.round(config.TRAIN.FG_FRACTION * rois_per_image).astype(int)
+
+    rois_array = list()
+    labels_array = list()
+    bbox_targets_array = list()
+    bbox_weights_array = list()
+    mask_targets_array = list()
+    mask_weights_array = list()
+
+    # Sample rois
+    for im_i in range(num_images):
+        roi_rec = roidb[im_i]
+        # infer num_classes from gt_overlaps
+        num_classes = roi_rec['gt_overlaps'].shape[1]
+        # label = class RoI has max overlap with
+        rois = roi_rec['boxes']
+        labels = roi_rec['max_classes']
+        overlaps = roi_rec['max_overlaps']
+        bbox_targets = roi_rec['bbox_targets']
+        im_info = roi_rec['im_info']
+
+        mask_targets = roi_rec['mask_targets']
+        mask_labels = roi_rec['mask_labels']
+        mask_inds = roi_rec['mask_inds']
+
+
+        im_rois, labels, bbox_targets, bbox_weights, mask_targets, mask_weights = \
+            sample_rois(rois, fg_rois_per_image, rois_per_image, num_classes,
+                            labels, overlaps, bbox_targets, mask_targets=mask_targets, mask_labels=mask_labels, mask_inds=mask_inds)
+
+        # project im_rois
+        # do not round roi
+        rois = im_rois
+        batch_index = im_i * np.ones((rois.shape[0], 1))
+        rois_array_this_image = np.hstack((batch_index, rois))
+        rois_array.append(rois_array_this_image)
+
+        # add labels
+        labels_array.append(labels)
+        bbox_targets_array.append(bbox_targets)
+        bbox_weights_array.append(bbox_weights)
+        mask_targets_array.append(mask_targets)
+        mask_weights_array.append(mask_weights)
+
+    rois_array = np.array(rois_array)
+    labels_array = np.array(labels_array)
+    bbox_targets_array = np.array(bbox_targets_array)
+    bbox_weights_array = np.array(bbox_weights_array)
+    mask_targets_array = np.array(mask_targets_array)
+    mask_weights_array = np.array(mask_weights_array)
+
+    data = {'data': im_array,
+            'data_ref': ref_im_array,
+            'eq_flag': eq_flag_array,
+            'rois': rois_array}
+    label = {'label': labels_array,
+             'bbox_target': bbox_targets_array,
+             'bbox_weight': bbox_weights_array,
+             'mask_target': mask_targets_array,
+             'mask_weight': mask_weights_array}
+    return data, label
+
 
 def sample_rois(rois, fg_rois_per_image, rois_per_image, num_classes,
                 labels=None, overlaps=None, bbox_targets=None, gt_boxes=None, mask_targets=None,
@@ -222,12 +369,12 @@ def sample_rois(rois, fg_rois_per_image, rois_per_image, num_classes,
         assert mask_labels is not None
         assert mask_inds is not None
         def _mask_umap(mask_targets, mask_labels, mask_inds):
-            _mask_targets = np.zeros((num_rois, num_classes, 28, 28), dtype=np.int8)
-            _mask_weights = np.zeros((num_rois, num_classes, 28, 28), dtype=np.int8)
+            _mask_targets = np.zeros((num_rois, num_classes, 14, 14), dtype=np.int8)
+            _mask_weights = np.zeros((num_rois, num_classes, 1, 1), dtype=np.int8)
             _mask_targets[mask_inds, mask_labels] = mask_targets
             _mask_weights[mask_inds, mask_labels] = 1
             _mask_weights[:, 0] = 0 # set background mask weight to zeros
-            return _mask_targets, _mask_weights # [num_rois, num_classes, 28, 28]
+            return _mask_targets, _mask_weights # [num_rois, num_classes, 14, 14]
         mask_targets, mask_weights = _mask_umap(mask_targets, mask_labels, mask_inds)
         mask_targets = mask_targets[keep_indexes]
         mask_weights = mask_weights[keep_indexes]

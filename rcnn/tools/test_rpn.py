@@ -27,15 +27,14 @@ def test_rpn(network, dataset, image_set, root_path, dataset_path,
     roidb = imdb.gt_roidb()
     test_data = TestLoader(roidb, batch_size=1, shuffle=shuffle, has_rpn=True)
 
-    # load model
-    arg_params, aux_params = load_param(prefix, epoch, convert=True, ctx=ctx)
-
     # infer shape
     data_shape_dict = dict(test_data.provide_data)
     arg_shape, _, aux_shape = sym.infer_shape(**data_shape_dict)
     arg_shape_dict = dict(zip(sym.list_arguments(), arg_shape))
     aux_shape_dict = dict(zip(sym.list_auxiliary_states(), aux_shape))
 
+    # load model
+    arg_params, aux_params = load_param(prefix, epoch, convert=True, ctx=ctx)
     # check parameters
     for k in sym.list_arguments():
         if k in data_shape_dict or 'label' in k:
@@ -51,8 +50,10 @@ def test_rpn(network, dataset, image_set, root_path, dataset_path,
     # decide maximum shape
     data_names = [k[0] for k in test_data.provide_data]
     label_names = None if test_data.provide_label is None else [k[0] for k in test_data.provide_label]
-    max_data_shape = [('data', (1, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES])))]
-
+    max_data_shape = [
+        ('data', (1, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('data_ref', (1, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('eq_flag', (1,))]
     # create predictor
     predictor = Predictor(sym, data_names, label_names,
                           context=ctx, max_data_shapes=max_data_shape,

@@ -33,6 +33,15 @@ def get_maskrcnn_fpn_name():
     label = rcnn_label + label
     return pred, label
 
+def get_maskrcnn_C4_name():
+    rcnn_pred, rcnn_label = get_rcnn_names()
+    pred = rcnn_pred + ['mask_prob']
+    label = []
+    label.append('mask_target')
+    label.append('mask_weight')
+    label = rcnn_label + label
+    return pred, label
+
 class RPNAccMetric(mx.metric.EvalMetric):
     def __init__(self):
         super(RPNAccMetric, self).__init__('RPNAcc')
@@ -60,13 +69,13 @@ class RPNAccMetric(mx.metric.EvalMetric):
 class RCNNAccMetric(mx.metric.EvalMetric):
     def __init__(self):
         super(RCNNAccMetric, self).__init__('RCNNAcc')
-        self.pred, self.label = get_maskrcnn_fpn_name()
+        self.pred, self.label = get_maskrcnn_C4_name()
 
     def update(self, labels, preds):
         pred = preds[self.pred.index('rcnn_cls_prob')]
         label = []
-        for s in config.RCNN_FEAT_STRIDE:
-            label.append(labels[self.label.index('rcnn_label_stride%s' % s)].asnumpy().reshape((-1,)).astype('Int32'))
+
+        label.append(labels[self.label.index('rcnn_label')].asnumpy().reshape((-1,)).astype('int32'))
         label = np.concatenate(label, axis=0)
 
         last_dim = pred.shape[-1]
@@ -82,7 +91,7 @@ class RCNNAccMetric(mx.metric.EvalMetric):
 class MaskLogLossMetric(mx.metric.EvalMetric):
     def __init__(self):
         super(MaskLogLossMetric, self).__init__('MaskLogLoss')
-        self.pred, self.label = get_maskrcnn_fpn_name()
+        self.pred, self.label = get_maskrcnn_C4_name()
 
     def update(self, labels, preds):
         # reshape and concat
@@ -90,10 +99,9 @@ class MaskLogLossMetric(mx.metric.EvalMetric):
         mask_target = []
         mask_weight = []
         mask_prob = preds[self.pred.index('mask_prob')].asnumpy()  # (n_rois, c, h, w)
-        for s in config.RCNN_FEAT_STRIDE:
-            label.append(labels[self.label.index('rcnn_label_stride%s' % s)].asnumpy().reshape((-1,)).astype('Int32'))
-            mask_target.append(labels[self.label.index('mask_target_stride%s' % s)].asnumpy().reshape((-1, config.NUM_CLASSES, 28,28)))
-            mask_weight.append(labels[self.label.index('mask_weight_stride%s' % s)].asnumpy().reshape((-1, config.NUM_CLASSES, 1,1)))
+        label.append(labels[self.label.index('rcnn_label')].asnumpy().reshape((-1,)).astype('int32'))
+        mask_target.append(labels[self.label.index('mask_target')].asnumpy().reshape((-1, config.NUM_CLASSES, 14,14)))
+        mask_weight.append(labels[self.label.index('mask_weight')].asnumpy().reshape((-1, config.NUM_CLASSES, 1,1)))
         label = np.concatenate(label, axis=0)
         mask_target = np.concatenate(mask_target, axis=0)
         mask_weight = np.concatenate(mask_weight, axis=0)
@@ -110,7 +118,7 @@ class MaskLogLossMetric(mx.metric.EvalMetric):
 class MaskAccMetric(mx.metric.EvalMetric):
     def __init__(self):
         super(MaskAccMetric, self).__init__('MaskACC')
-        self.pred, self.label = get_maskrcnn_fpn_name()
+        self.pred, self.label = get_maskrcnn_C4_name()
 
     def update(self, labels, preds):
         # reshape and concat
@@ -118,10 +126,9 @@ class MaskAccMetric(mx.metric.EvalMetric):
         mask_target = []
         mask_weight = []
         mask_prob = preds[self.pred.index('mask_prob')].asnumpy()  # (n_rois, c, h, w)
-        for s in config.RCNN_FEAT_STRIDE:
-            label.append(labels[self.label.index('rcnn_label_stride%s' % s)].asnumpy().reshape((-1,)).astype('Int32'))
-            mask_target.append(labels[self.label.index('mask_target_stride%s' % s)].asnumpy().reshape((-1, config.NUM_CLASSES, 28,28)))
-            mask_weight.append(labels[self.label.index('mask_weight_stride%s' % s)].asnumpy().reshape((-1, config.NUM_CLASSES, 1,1)))
+        label.append(labels[self.label.index('rcnn_label')].asnumpy().reshape((-1,)).astype('int32'))
+        mask_target.append(labels[self.label.index('mask_target')].asnumpy().reshape((-1, config.NUM_CLASSES, 14,14)))
+        mask_weight.append(labels[self.label.index('mask_weight')].asnumpy().reshape((-1, config.NUM_CLASSES, 1,1)))
         label = np.concatenate(label, axis=0)
         mask_target = np.concatenate(mask_target, axis=0)
         mask_weight = np.concatenate(mask_weight, axis=0)
@@ -168,13 +175,12 @@ class RPNLogLossMetric(mx.metric.EvalMetric):
 class RCNNLogLossMetric(mx.metric.EvalMetric):
     def __init__(self):
         super(RCNNLogLossMetric, self).__init__('RCNNLogLoss')
-        self.pred, self.label = get_maskrcnn_fpn_name()
+        self.pred, self.label = get_maskrcnn_C4_name()
 
     def update(self, labels, preds):
         pred = preds[self.pred.index('rcnn_cls_prob')]
         label = []
-        for s in config.RCNN_FEAT_STRIDE:
-            label.append(labels[self.label.index('rcnn_label_stride%s' % s)].asnumpy().reshape((-1,)).astype('Int32'))
+        label.append(labels[self.label.index('rcnn_label')].asnumpy().reshape((-1,)).astype('int32'))
         label = np.concatenate(label, axis=0)
 
         last_dim = pred.shape[-1]
@@ -213,13 +219,12 @@ class RCNNRegLossMetric(mx.metric.EvalMetric):
     def __init__(self):
         name = 'RCNNL1Loss'
         super(RCNNRegLossMetric, self).__init__(name)
-        self.pred, self.label = get_maskrcnn_fpn_name()
+        self.pred, self.label = get_maskrcnn_C4_name()
 
     def update(self, labels, preds):
         bbox_loss = preds[self.pred.index('rcnn_bbox_loss')].asnumpy()
         label = []
-        for s in config.RCNN_FEAT_STRIDE:
-            label.append(labels[self.label.index('rcnn_label_stride%s' % s)].asnumpy().reshape((-1,)).astype('Int32'))
+        label.append(labels[self.label.index('rcnn_label')].asnumpy().reshape((-1,)).astype('int32'))
         label = np.concatenate(label, axis=0)
 
         last_dim = bbox_loss.shape[-1]

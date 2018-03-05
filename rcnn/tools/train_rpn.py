@@ -50,9 +50,14 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
                                   allowed_border=9999)
 
     # infer max shape
-    max_data_shape = [('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
-                      ('data_ref', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
-                      ('eq_flag', (input_batch_size,))]
+    '''
+    max_data_shape = [('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES])))]
+    '''
+    max_data_shape = [
+        ('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('data_ref', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('eq_flag', (input_batch_size,))]
+
     max_data_shape, max_label_shape = train_data.infer_shape(max_data_shape)
     print 'providing maximum shape', max_data_shape, max_label_shape
 
@@ -136,6 +141,7 @@ def train_rpn(network, dataset, image_set, root_path, dataset_path,
     print 'lr', lr, 'lr_epoch_diff', lr_epoch_diff, 'lr_iters', lr_iters
     lr_scheduler = mx.lr_scheduler.MultiFactorScheduler(lr_iters, lr_factor)
     # optimizer
+
     optimizer_params = {'momentum': 0.9,
                         'wd': 0.0001,
                         'learning_rate': lr,

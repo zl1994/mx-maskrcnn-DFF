@@ -117,7 +117,7 @@ def compute_mask_and_label(ex_rois, ex_labels, seg, flipped):
     n_rois = ex_rois.shape[0]
     label = ex_labels
     class_id = config.CLASS_ID
-    mask_target = np.zeros((n_rois, 28, 28), dtype=np.int8)
+    mask_target = np.zeros((n_rois, 14, 14), dtype=np.int8)
     mask_label = np.zeros((n_rois), dtype=np.int8)
     for n in range(n_rois):
         target = ins_seg[int(rois[n, 1]): int(rois[n, 3]), int(rois[n, 0]): int(rois[n, 2])]
@@ -148,7 +148,7 @@ def compute_mask_and_label(ex_rois, ex_labels, seg, flipped):
         mask = np.zeros(target.shape)
         idx = np.where(target == ins_id)
         mask[idx] = 1
-        mask = cv2.resize(mask, (28, 28), interpolation=cv2.INTER_NEAREST)
+        mask = cv2.resize(mask, (14, 14), interpolation=cv2.INTER_NEAREST)
 
         mask_target[n] = mask
         mask_label[n] = label[int(n)]

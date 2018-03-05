@@ -37,6 +37,27 @@ def get_rpn_testbatch(roidb):
 
     return data, label, im_info
 
+def get_rpn_dff_testbatch(roidb):
+    """
+    return a dict of testbatch
+    :param roidb: ['image', 'flipped']
+    :return: data, label, im_info
+    """
+    assert len(roidb) == 1, 'Single batch only'
+    imgs, ref_imgs, eq_flags, roidb = get_pair_image(roidb, scale=config.TRAIN.SCALE)
+    im_array = imgs[0]
+    im_info = np.array([roidb[0]['im_info']], dtype=np.float32)
+    ref_im_array = ref_imgs[0]
+    eq_flag_array = np.array([eq_flags[0], ], dtype=np.float32)
+
+    data = {'data': im_array,
+            'data_ref': ref_im_array,
+            'eq_flag': eq_flag_array,
+            'im_info': im_info}
+    label = {}
+
+    return data, label, im_info
+
 
 def get_rpn_batch(roidb):
     """
@@ -393,12 +414,11 @@ def assign_anchor(feat_shape, gt_boxes, im_info, feat_stride=16,
         print 'rpn: num_negative avg', _bg_sum / _count
 
     # resahpe
+
     labels = labels.reshape((1, feat_height, feat_width, A)).transpose(0, 3, 1, 2)
     labels = labels.reshape((1, A * feat_height * feat_width))
     bbox_targets = bbox_targets.reshape((1, feat_height*feat_width, A * 4)).transpose(0, 2, 1)
     bbox_weights = bbox_weights.reshape((1, feat_height*feat_width, A * 4)).transpose((0, 2, 1))
-
-
 
     label= {'label': labels,
             'bbox_target': bbox_targets,

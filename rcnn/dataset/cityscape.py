@@ -139,7 +139,7 @@ class Cityscape(IMDB):
             boxes, gt_classes, ins_id, pixel, gt_overlaps = self.load_from_seg(imgfiles_list[im]['ins_seg_path'])
             if boxes.size == 0:
                 total_num_objs = 0
-                boxes = np.zeros((total_num_objs, 4), dtype=np.uint16)
+                boxes = np.zeros((total_num_objs, 4), dtype=np.int16)
                 gt_overlaps = np.zeros((total_num_objs, self.num_classes), dtype=np.float32)
                 gt_classes = np.zeros((total_num_objs, ), dtype=np.int32)
             roi_rec['boxes'] = boxes

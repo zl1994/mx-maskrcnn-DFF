@@ -4,8 +4,8 @@ from mxnet.executor_manager import _split_input_slice
 
 from rcnn.config import config
 from rcnn.io.image import tensor_vstack
-from rcnn.io.rpn import get_rpn_testbatch, get_rpn_batch, assign_anchor, assign_anchor_fpn, get_rpn_pair_batch
-from rcnn.io.rcnn import get_rcnn_testbatch, get_fpn_rcnn_testbatch, get_fpn_maskrcnn_batch
+from rcnn.io.rpn import get_rpn_testbatch,get_rpn_dff_testbatch, get_rpn_batch, assign_anchor, get_rpn_pair_batch
+from rcnn.io.rcnn import get_rcnn_testbatch, get_fpn_rcnn_testbatch, get_fpn_maskrcnn_batch, get_maskrcnn_batch, get_maskrcnn_pair_batch
 
 
 class TestLoader(mx.io.DataIter):
@@ -24,7 +24,7 @@ class TestLoader(mx.io.DataIter):
 
         # decide data and label names (only for training)
         if has_rpn:
-            self.data_name = ['data', 'im_info']
+            self.data_name = ['data', 'data_ref', 'eq_flag', 'im_info']
         else:
             raise NotImplementedError
         self.label_name = None
@@ -80,7 +80,7 @@ class TestLoader(mx.io.DataIter):
         cur_to = min(cur_from + self.batch_size, self.size)
         roidb = [self.roidb[self.index[i]] for i in range(cur_from, cur_to)]
         if self.has_rpn:
-            data, label, im_info = get_rpn_testbatch(roidb)
+            data, label, im_info = get_rpn_dff_testbatch(roidb)
         else:
             if self.FPN and not config.TEST.FPN_RCNN_FINEST and not config.TEST.FPN_RCNN_NEW:
                 data, label, im_info = get_fpn_rcnn_testbatch(roidb)
@@ -89,6 +89,86 @@ class TestLoader(mx.io.DataIter):
         self.data = [mx.nd.array(data[name]) for name in self.data_name]
         self.im_info = im_info
 
+class TestLoader_dff(mx.io.DataIter):
+    def __init__(self, roidb, batch_size=1, shuffle=False,
+                 has_rpn=False):
+        super(TestLoader, self).__init__()
+
+        # save parameters as properties
+        self.roidb = roidb
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.has_rpn = has_rpn
+        # infer properties from roidb
+        self.size = len(self.roidb)
+        self.index = np.arange(self.size)
+
+        # decide data and label names (only for training)
+        if has_rpn:
+            self.data_name = ['data', 'data_ref', 'eq_flag', 'im_info']
+        else:
+            raise NotImplementedError
+        self.label_name = None
+
+        # status variable for synchronization between get_data and get_label
+        self.cur = 0
+        self.data = None
+        self.label = None
+        self.im_info = None
+
+        # get first batch to fill in provide_data and provide_label
+        self.reset()
+        self.get_batch()
+
+    @property
+    def provide_data(self):
+        return [(k, v.shape) for k, v in zip(self.data_name, self.data)]
+
+    @property
+    def provide_label(self):
+        return None
+
+    def reset(self):
+        self.cur = 0
+        if self.shuffle:
+            np.random.shuffle(self.index)
+
+    def iter_next(self):
+        return self.cur + self.batch_size <= self.size
+
+    def next(self):
+        if self.iter_next():
+            self.get_batch()
+            self.cur += self.batch_size
+            return self.im_info, \
+                   mx.io.DataBatch(data=self.data, label=self.label,
+                                   pad=self.getpad(), index=self.getindex(),
+                                   provide_data=self.provide_data, provide_label=self.provide_label)
+        else:
+            raise StopIteration
+
+    def getindex(self):
+        return self.cur / self.batch_size
+
+    def getpad(self):
+        if self.cur + self.batch_size > self.size:
+            return self.cur + self.batch_size - self.size
+        else:
+            return 0
+
+    def get_batch(self):
+        cur_from = self.cur
+        cur_to = min(cur_from + self.batch_size, self.size)
+        roidb = [self.roidb[self.index[i]] for i in range(cur_from, cur_to)]
+        if self.has_rpn:
+            data, label, im_info = get_rpn_dff_testbatch(roidb)
+        else:
+            if self.FPN and not config.TEST.FPN_RCNN_FINEST and not config.TEST.FPN_RCNN_NEW:
+                data, label, im_info = get_fpn_rcnn_testbatch(roidb)
+            else:
+                data, label, im_info = get_rcnn_testbatch(roidb)
+        self.data = [mx.nd.array(data[name]) for name in self.data_name]
+        self.im_info = im_info
 
 class MaskROIIter(mx.io.DataIter):
     def __init__(self, roidb, batch_size=2, shuffle=False, ctx=None, work_load_list=None, aspect_grouping=False):
@@ -120,14 +200,12 @@ class MaskROIIter(mx.io.DataIter):
         # decide data and label names (only for training)
         self.data_name = ['data']
         self.label_name = []
-        for s in config.RCNN_FEAT_STRIDE:
-            self.data_name.append('rois_stride%s' % s)
-            self.label_name.append('label_stride%s' % s)
-            self.label_name.append('bbox_target_stride%s' % s)
-            self.label_name.append('bbox_weight_stride%s' % s)
-        for s in config.RCNN_FEAT_STRIDE:
-            self.label_name.append('mask_target_stride%s' % s)
-            self.label_name.append('mask_weight_stride%s' % s)
+        self.data_name.append('rois')
+        self.label_name.append('label')
+        self.label_name.append('bbox_target')
+        self.label_name.append('bbox_weight')
+        self.label_name.append('mask_target')
+        self.label_name.append('mask_weight')
 
         # status variable for synchronization between get_data and get_label
         self.cur = 0
@@ -209,15 +287,22 @@ class MaskROIIter(mx.io.DataIter):
             "Invalid settings for work load. "
         slices = _split_input_slice(self.batch_size, work_load_list)
 
-        im_array_list = []
-        levels_data_list = []
+        data_list = []
+        label_list = []
         for islice in slices:
             iroidb = [roidb[i] for i in range(islice.start, islice.stop)]
-            im_array, levels_data = get_fpn_maskrcnn_batch(iroidb)
-            im_array_list.append(im_array)
-            levels_data_list.append(levels_data)
+            data, label = get_maskrcnn_batch(iroidb)
+            data_list.append(data)
+            label_list.append(label)
 
-        all_data, all_label = self._make_data_and_labels(im_array_list, levels_data_list)
+        all_data = dict()
+        for key in data_list[0].keys():
+            all_data[key] = tensor_vstack([batch[key] for batch in data_list])
+
+        all_label = dict()
+        for key in label_list[0].keys():
+            all_label[key] = tensor_vstack([batch[key] for batch in label_list])
+
         self.data = [mx.nd.array(all_data[name]) for name in self.data_name]
         self.label = [mx.nd.array(all_label[name]) for name in self.label_name]
 
@@ -347,6 +432,146 @@ class MaskROIIter(mx.io.DataIter):
             all_label[key] = tensor_vstack([batch[key] for batch in label_list])
 
         return all_data, all_label
+
+class MaskROIIter_dff(mx.io.DataIter):
+    def __init__(self, roidb, batch_size=2, shuffle=False, ctx=None, work_load_list=None, aspect_grouping=False):
+        """
+        This Iter will provide roi data to Fast R-CNN network
+        :param roidb: must be preprocessed
+        :param batch_size: must divide BATCH_SIZE(128)
+        :param shuffle: bool
+        :param ctx: list of contexts
+        :param work_load_list: list of work load
+        :param aspect_grouping: group images with similar aspects
+        :return: ROIIter
+        """
+        super(MaskROIIter_dff, self).__init__()
+        # save parameters as properties
+        self.roidb = roidb
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.ctx = ctx
+        if self.ctx is None:
+            self.ctx = [mx.cpu()]
+        self.work_load_list = work_load_list
+        self.aspect_grouping = aspect_grouping
+
+        # infer properties from roidb
+        self.size = len(roidb)
+        self.index = np.arange(self.size)
+
+        # decide data and label names (only for training)
+        self.data_name = ['data']
+        self.label_name = []
+        self.data_name.append('rois')
+        self.data_name.append('data_ref')
+        self.data_name.append('eq_flag')
+        self.label_name.append('label')
+        self.label_name.append('bbox_target')
+        self.label_name.append('bbox_weight')
+        self.label_name.append('mask_target')
+        self.label_name.append('mask_weight')
+
+        # status variable for synchronization between get_data and get_label
+        self.cur = 0
+        self.batch = None
+        self.data = None
+        self.label = None
+
+        # get first batch to fill in provide_data and provide_label
+        self.reset()
+        self.get_batch()
+
+    @property
+    def provide_data(self):
+        return [(k, v.shape) for k, v in zip(self.data_name, self.data)]
+
+    @property
+    def provide_label(self):
+        return [(k, v.shape) for k, v in zip(self.label_name, self.label)]
+
+    def reset(self):
+        self.cur = 0
+        if self.shuffle:
+            if self.aspect_grouping:
+                widths = np.array([r['width'] for r in self.roidb])
+                heights = np.array([r['height'] for r in self.roidb])
+                horz = (widths >= heights)
+                vert = np.logical_not(horz)
+                horz_inds = np.where(horz)[0]
+                vert_inds = np.where(vert)[0]
+                # Avoid putting different aspect ratio image into the same bucket,
+                # which may cause bucketing warning.
+                pad_horz = self.batch_size - len(horz_inds) % self.batch_size
+                pad_vert = self.batch_size - len(vert_inds) % self.batch_size
+                horz_inds = np.hstack([horz_inds, horz_inds[:pad_horz]])
+                vert_inds = np.hstack([vert_inds, vert_inds[:pad_vert]])
+                inds = np.hstack((np.random.permutation(horz_inds), np.random.permutation(vert_inds)))
+
+                inds = np.reshape(inds[:], (-1, self.batch_size))
+                row_perm = np.random.permutation(np.arange(inds.shape[0]))
+                inds = np.reshape(inds[row_perm, :], (-1,))
+                self.index = inds
+            else:
+                np.random.shuffle(self.index)
+
+    def iter_next(self):
+        return self.cur + self.batch_size <= self.size
+
+    def next(self):
+        if self.iter_next():
+            self.get_batch()
+            self.cur += self.batch_size
+            return mx.io.DataBatch(data=self.data, label=self.label,
+                                   pad=self.getpad(), index=self.getindex(),
+                                   provide_data=self.provide_data, provide_label=self.provide_label)
+        else:
+            raise StopIteration
+
+    def getindex(self):
+        return self.cur / self.batch_size
+
+    def getpad(self):
+        if self.cur + self.batch_size > self.size:
+            return self.cur + self.batch_size - self.size
+        else:
+            return 0
+
+    def get_batch(self):
+        # slice roidb
+        cur_from = self.cur
+        cur_to = min(cur_from + self.batch_size, self.size)
+        roidb = [self.roidb[self.index[i]] for i in range(cur_from, cur_to)]
+
+        # decide multi device slices
+        work_load_list = self.work_load_list
+        ctx = self.ctx
+        if work_load_list is None:
+            work_load_list = [1] * len(ctx)
+        assert isinstance(work_load_list, list) and len(work_load_list) == len(ctx), \
+            "Invalid settings for work load. "
+        slices = _split_input_slice(self.batch_size, work_load_list)
+
+        data_list = []
+        label_list = []
+        for islice in slices:
+            iroidb = [roidb[i] for i in range(islice.start, islice.stop)]
+            data, label = get_maskrcnn_pair_batch(iroidb)
+            data_list.append(data)
+            label_list.append(label)
+
+        all_data = dict()
+        for key in data_list[0].keys():
+            all_data[key] = tensor_vstack([batch[key] for batch in data_list])
+
+        all_label = dict()
+        for key in label_list[0].keys():
+            all_label[key] = tensor_vstack([batch[key] for batch in label_list])
+
+        self.data = [mx.nd.array(all_data[name]) for name in self.data_name]
+        self.label = [mx.nd.array(all_label[name]) for name in self.label_name]
+
+
 
 class AnchorLoader(mx.io.DataIter):
     def __init__(self, feat_sym, roidb, batch_size=1, shuffle=False, ctx=None, work_load_list=None,
@@ -504,6 +729,7 @@ class AnchorLoader(mx.io.DataIter):
 
         # pad data first and then assign anchor (read label)
         data_tensor = tensor_vstack([batch['data'] for batch in data_list])
+
         for i_card in range(len(data_list)):
             data_list[i_card]['data'] = data_tensor[
                                         i_card * config.TRAIN.BATCH_IMAGES:(1 + i_card) * config.TRAIN.BATCH_IMAGES]
@@ -540,7 +766,7 @@ class AnchorLoader(mx.io.DataIter):
 
         all_label = dict()
         for key in self.label_name:
-            pad = 0 if key == 'weight' else -1
+            pad = 0 if key == 'bbox_weight' else -1
             all_label[key] = tensor_vstack([batch[key] for batch in label_list], pad=pad)
         self.data = [mx.nd.array(all_data[key]) for key in self.data_name]
         self.label = [mx.nd.array(all_label[key]) for key in self.label_name]
@@ -703,7 +929,7 @@ class AnchorLoader_dff(mx.io.DataIter):
 
         all_label = dict()
         for key in self.label_name:
-            pad = 0 if key == 'weight' else -1
+            pad = 0 if key == 'bbox_weight' else -1
             all_label[key] = tensor_vstack([batch['label'][key] for batch in rst], pad=pad)
 
         self.data = [mx.nd.array(all_data[key]) for key in self.data_name]
@@ -722,7 +948,9 @@ class AnchorLoader_dff(mx.io.DataIter):
 
         # assign anchor for label
         label = assign_anchor(feat_shape, gt_boxes, im_info,
-                              self.feat_stride, self.anchor_scales,
-                              self.anchor_ratios, self.allowed_border)
+                              self.feat_stride,
+                              self.anchor_scales,
+                              self.anchor_ratios,
+                              self.allowed_border)
 
         return {'data': data, 'label': label}

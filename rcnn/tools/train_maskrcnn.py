@@ -9,7 +9,7 @@ import cPickle as pkl
 from ..config import config, default, generate_config
 from ..symbol import *
 from ..core import callback, metric
-from ..core.loader import MaskROIIter
+from ..core.loader import MaskROIIter, MaskROIIter_dff
 from ..core.module import MutableModule
 from ..processing.bbox_regression import add_bbox_regression_targets, add_mask_targets
 from ..processing.assign_levels import add_assign_targets
@@ -18,7 +18,7 @@ from ..utils.load_model import load_param
 
 def train_maskrcnn(network, dataset, image_set, root_path, dataset_path,
                frequent, kvstore, work_load_list, no_flip, no_shuffle, resume,
-               ctx, pretrained, epoch, prefix, begin_epoch, end_epoch,
+               ctx, pretrained, pretrained_flow, epoch, prefix, begin_epoch, end_epoch,
                train_shared, lr, lr_step, proposal, maskrcnn_stage=None):
     # set up logger
     logging.basicConfig()
@@ -83,26 +83,32 @@ def train_maskrcnn(network, dataset, image_set, root_path, dataset_path,
 
         roidb = filter_roidb(roidb)
         means, stds = add_bbox_regression_targets(roidb)
-        add_assign_targets(roidb)
+        # add_assign_targets(roidb)
         add_mask_targets(roidb)
         for file, obj in zip([roidb_file, mean_file, std_file], [roidb, means, stds]):
             with open(file, 'w') as f:
                 pkl.dump(obj, f, -1)
 
     # load training data
-    train_data = MaskROIIter(roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
+    train_data = MaskROIIter_dff(roidb, batch_size=input_batch_size, shuffle=not no_shuffle,
                              ctx=ctx, work_load_list=work_load_list, aspect_grouping=config.TRAIN.ASPECT_GROUPING)
 
     # infer max shape
+    '''
     max_data_shape = [('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES])))]
+    '''
+    max_data_shape = [
+        ('data', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('data_ref', (input_batch_size, 3, max([v[0] for v in config.SCALES]), max([v[1] for v in config.SCALES]))),
+        ('eq_flag', (input_batch_size,))]
     max_label_shape = []
-    for s in config.RCNN_FEAT_STRIDE:
-        max_data_shape.append(('rois_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS, 5)))
-        max_label_shape.append(('label_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS)))
-        max_label_shape.append(('bbox_target_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS*config.NUM_CLASSES*4)))
-        max_label_shape.append(('bbox_weight_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS*config.NUM_CLASSES*4)))
-        max_label_shape.append(('mask_target_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS, config.NUM_CLASSES, 28, 28)))
-        max_label_shape.append(('mask_weight_stride%s' % s, (input_batch_size, config.TRAIN.BATCH_ROIS, config.NUM_CLASSES, 1, 1)))
+
+    max_data_shape.append(('rois', (input_batch_size, config.TRAIN.BATCH_ROIS, 5)))
+    max_label_shape.append(('label', (input_batch_size, config.TRAIN.BATCH_ROIS)))
+    max_label_shape.append(('bbox_target', (input_batch_size, config.TRAIN.BATCH_ROIS*config.NUM_CLASSES*4)))
+    max_label_shape.append(('bbox_weight', (input_batch_size, config.TRAIN.BATCH_ROIS*config.NUM_CLASSES*4)))
+    max_label_shape.append(('mask_target', (input_batch_size, config.TRAIN.BATCH_ROIS, config.NUM_CLASSES, 14, 14)))
+    max_label_shape.append(('mask_weight', (input_batch_size, config.TRAIN.BATCH_ROIS, config.NUM_CLASSES, 1, 1)))
     # infer shape
     data_shape_dict = dict(train_data.provide_data + train_data.provide_label)
 
@@ -118,6 +124,9 @@ def train_maskrcnn(network, dataset, image_set, root_path, dataset_path,
         arg_params, aux_params = load_param(prefix, begin_epoch, convert=True)
     else:
         arg_params, aux_params = load_param(pretrained, epoch, convert=True)
+        arg_params_flow, aux_params_flow = load_param(pretrained_flow, epoch, convert=True)
+        arg_params.update(arg_params_flow)
+        aux_params.update(aux_params_flow)
         init_bbox_pred = mx.init.Normal(sigma=0.001)
         init_internal = mx.init.Normal(sigma=0.01)
         init = mx.init.Xavier(factor_type="in", rnd_type='gaussian', magnitude=2)

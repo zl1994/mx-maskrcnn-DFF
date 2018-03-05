@@ -68,8 +68,8 @@ def get_pair_image(roidb, scale=False):
         assert os.path.exists(roi_rec['image']), '%s does not exist'.format(roi_rec['image'])
         im = cv2.imread(roi_rec['image'])
 
-        #offset = np.random.randint(-5, 1)
-        offset = 0
+        offset = np.random.randint(-3, 1)
+        #offset = 0
         if offset == 0:
             ref_im = im.copy()
             eq_flag = 1

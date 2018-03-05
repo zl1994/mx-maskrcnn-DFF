@@ -5,7 +5,7 @@ config = edict()
 
 # network related params
 config.PIXEL_MEANS = np.array([103.939, 116.779, 123.68])
-config.ROIALIGN = True
+config.ROIALIGN = False
 
 config.RPN_FEAT_STRIDE = 16
 config.RCNN_FEAT_STRIDE = 16
@@ -17,7 +17,7 @@ config.FIXED_PARAMS_SHARED = ['conv0', 'stage1', 'stage2', 'stage3',
 # dataset related params
 config.NUM_CLASSES = 9
 config.SCALES = [(1024, 2048)]  # first is scale (the shorter side); second is max size
-config.ANCHOR_SCALES = (8,)
+config.ANCHOR_SCALES = (8,16,32)
 config.ANCHOR_RATIOS = (0.5, 1, 2)
 config.NUM_ANCHORS = len(config.ANCHOR_SCALES) * len(config.ANCHOR_RATIOS)
 config.CLASS_ID = [0, 24, 25, 26, 27, 28, 31, 32, 33]
@@ -56,7 +56,7 @@ config.TRAIN.RPN_NEGATIVE_OVERLAP = 0.3
 config.TRAIN.RPN_CLOBBER_POSITIVES = False
 # rpn bounding box regression params
 config.TRAIN.RPN_BBOX_WEIGHTS = (1.0, 1.0, 1.0, 1.0)
-config.TRAIN.RPN_POSITIVE_WEIGHT = -1.0
+config.TRAIN.RPN_POSITIVE_WEIGHT = 1.0
 
 # RPN proposal
 config.TRAIN.RPN_NMS_THRESH = 0.7
@@ -122,9 +122,9 @@ default.rpn_lr = default.base_lr
 default.rpn_lr_step = '6'
 # default rcnn
 default.rcnn_prefix = 'model/rcnn'
-default.rcnn_epoch = 24
+default.rcnn_epoch = 18
 default.rcnn_lr = default.base_lr
-default.rcnn_lr_step = '20'
+default.rcnn_lr_step = '15'
 # default alternate
 default.alternate_prefix = '/mnt/D/cityscape/model/res50-C4/cityscape/alternate'
 
@@ -178,7 +178,7 @@ dataset.Cityscape.root_path = '/mnt/D/cityscape/model/res50-C4/cityscape/alterna
 dataset.Cityscape.dataset_path = '/mnt/D/cityscape'
 dataset.Cityscape.NUM_CLASSES = 9
 dataset.Cityscape.SCALES = [(1024, 2048)]
-dataset.Cityscape.ANCHOR_SCALES = (8,16,32)
+dataset.Cityscape.ANCHOR_SCALES = (8, 16, 32)
 dataset.Cityscape.ANCHOR_RATIOS = (0.5, 1, 2)
 dataset.Cityscape.NUM_ANCHORS = len(dataset.Cityscape.ANCHOR_SCALES) * len(dataset.Cityscape.ANCHOR_RATIOS)
 dataset.Cityscape.CLASS_ID = [0, 24, 25, 26, 27, 28, 31, 32, 33]
